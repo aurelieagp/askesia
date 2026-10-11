@@ -253,6 +253,7 @@ const EQUIP = [
   {id:'kettlebell', n:'Kettlebell', s:'Une ou plusieurs kettlebells'},
   {id:'elastique', n:'Élastiques', s:'Bandes de résistance'},
   {id:'traction', n:'Barre de traction', s:'Fixée dans un cadre de porte'},
+  {id:'marche', n:'Une marche ou un step', s:'Une marche d’escalier stable suffit'},
   {id:'salle', n:'Salle de sport', s:'Barres, machines, poulies (et tout le reste)'}
 ];
 // Objectif → répétitions et repos (exercices principaux / isolation). ACSM 2009.
@@ -301,7 +302,7 @@ const WARMUP = {
 };
 // Cardio optionnel. OMS : 150 min d'activité modérée par semaine.
 const CARDIO = {
-  types:['Marche rapide','Course','Vélo','Rameur','Corde à sauter','Natation','Autre'],
+  types:['Marche rapide','Course','Vélo','Vélo d’appartement','Rameur','Corde à sauter','Natation','Danse','Montées d’escalier','Autre'],
   minutes:{debutant:20, reprise:30, inter:40},
   intensity:'Tu peux parler mais pas chanter.',
   placement:'Sur un jour sans muscu, sinon après la séance, jamais avant une séance de jambes.',
@@ -311,6 +312,22 @@ const CARDIO = {
 const VOLUME = {low:6, high:20};
 // Badges. Chaque icône est un fichier séparé : badges/<id>.svg à côté de index.html.
 // Tant que le fichier n'existe pas, une icône provisoire s'affiche. Remplacer un fichier suffit.
+// Zones à ménager (ajout à la V1, choix de conception) : les exercices listés sont écartés
+// et remplacés par le suivant de la même famille. Ce n'est pas un avis médical.
+const ZONES = [
+  {id:'genoux', n:'Genoux', s:'Pas de fentes ni de squat lourd'},
+  {id:'dos', n:'Bas du dos', s:'Pas de soulevé de terre ni de swing'},
+  {id:'epaules', n:'Épaules', s:'Pas de poussée au-dessus de la tête, de dips ni de tractions'},
+  {id:'poignets', n:'Poignets', s:'Pas d’appui sur les mains au sol'},
+  {id:'sol', n:'Éviter le sol', s:'Tout se fait debout, sur une chaise ou contre un mur'}
+];
+const AVOID = {
+  genoux:['squat_barre','presse','squat_saute','bulgare','bulgare_pdc','fentes'],
+  dos:['squat_barre','sdt_roumain','sdt_halteres','kb_swing','sdt_elastique','rowing_barre','superman','superman_tirage','releve_jambes'],
+  epaules:['dc_barre','dm_halt','dev_machine','dev_el','pike','pike_genoux','pike_sur','pompes_sur','dips_chaise','dips_plies','dips_tendues','tractions','tractions_sup','tractions_neg','tractions_lest','tractions_assist'],
+  poignets:['pompes','pompes_genoux','pompes_sur','pike','pike_genoux','pike_sur','planche_touche','dips_chaise','dips_plies','dips_tendues'],
+  sol:['pont_unilat','pont','hip_thrust_h','pompes','pompes_genoux','pompes_sur','pike','pike_genoux','pike_sur','rowing_inv','rowing_inv_sur','superman','superman_tirage','planche','planche_genoux','planche_touche','gainage_lat','gainage_lat_genoux','gainage_lat_jambe','dead_bug','dead_bug_jambes','crunch','crunch_inv','releve_jambes']
+};
 const BADGE_DIR = 'badges/';
 const BADGES = [
   {id:'premier-pas', n:'Premier pas', s:'Terminer ta première séance', ic:'bolt', rule:t=>t.workouts>=1},
@@ -345,12 +362,15 @@ const EX = [
   {id:'kb_swing', n:'Kettlebell swing', f:'hinge', eq:['kettlebell'], k:'P', m:'Fessiers · ischios · tronc', mus:['Fessiers','Ischios','Abdos'], easy:'sdt_halteres', start:12, cue:'Kettlebell entre les jambes, dos plat. Donne un coup de hanches pour la projeter jusqu’à hauteur de poitrine, bras relâchés.'},
   {id:'sdt_elastique', n:'Soulevé de terre à l’élastique', f:'hinge', eq:['elastique'], k:'P', m:'Ischios · fessiers', mus:['Ischios','Fessiers'], easy:'pont', hard:'sdt_halteres', cue:'Pieds sur l’élastique, mains aux extrémités. Penche-toi dos plat puis redresse-toi en serrant les fessiers.'},
   {id:'pont_unilat', n:'Pont fessier une jambe', f:'hinge', eq:['corps'], k:'P', side:true, m:'Fessiers · ischios', mus:['Fessiers','Ischios'], easy:'pont', hard:'hip_thrust_h', cue:'Allongée sur le dos, un pied au sol, l’autre jambe tendue. Monte le bassin en poussant dans le talon.'},
+  {id:'good_morning', n:'Charnière debout (good morning)', f:'hinge', eq:['corps'], k:'P', m:'Ischios · fessiers · bas du dos', mus:['Ischios','Fessiers','Bas du dos'], hard:'pont_unilat', cue:'Debout, mains sur la tête, genoux légèrement fléchis. Penche le buste en poussant les fesses en arrière, dos bien plat, puis redresse-toi en serrant les fessiers.'},
   {id:'bulgare', n:'Fente bulgare haltères', f:'lunge', eq:['halteres'], k:'P', ph:true, side:true, m:'Quadriceps · fessiers', mus:['Quadriceps','Fessiers'], easy:'bulgare_pdc', start:4, cue:'Pied arrière posé sur une chaise ou un banc. Descends droit, genou avant au-dessus du pied.'},
   {id:'bulgare_pdc', n:'Fente bulgare sans charge', f:'lunge', eq:['corps'], k:'P', side:true, m:'Quadriceps · fessiers', mus:['Quadriceps','Fessiers'], easy:'fentes', hard:'bulgare', cue:'Pied arrière sur une chaise. Descends droit en gardant le buste haut, puis remonte en poussant dans le pied avant.'},
+  {id:'montee_marche', n:'Montées sur une marche', f:'lunge', eq:['marche'], k:'P', side:true, m:'Quadriceps · fessiers', mus:['Quadriceps','Fessiers'], easy:'squat_chaise', hard:'bulgare_pdc', cue:'Face à une marche stable, monte en poussant dans le talon du pied posé dessus, redescends en contrôlant. Tiens la rampe si besoin.'},
   {id:'fentes', n:'Fentes alternées', f:'lunge', eq:['corps'], k:'P', m:'Quadriceps · fessiers', mus:['Quadriceps','Fessiers'], easy:'fentes_arriere', hard:'bulgare_pdc', cue:'Grand pas en avant, descends jusqu’à ce que le genou arrière frôle le sol. Alterne les jambes.'},
   {id:'hip_thrust', n:'Hip thrust à la barre', f:'glutes', eq:['salle'], k:'P', gear:'barre', m:'Fessiers · ischios', mus:['Fessiers','Ischios'], easy:'hip_thrust_h', start:30, cue:'Haut du dos sur un banc, barre sur les hanches. Monte jusqu’à ce que le buste et les cuisses soient alignés, serre 1 seconde.'},
   {id:'hip_thrust_h', n:'Hip thrust haltère', f:'glutes', eq:['halteres'], k:'P', m:'Fessiers · ischios', mus:['Fessiers','Ischios'], easy:'pont', hard:'hip_thrust', start:10, cue:'Dos contre un canapé ou un banc, haltère sur les hanches. Monte le bassin et serre les fessiers en haut.'},
   {id:'pont', n:'Pont fessier', f:'glutes', eq:['corps'], k:'I', m:'Fessiers', mus:['Fessiers'], hard:'pont_unilat', cue:'Allongée sur le dos, genoux pliés. Monte le bassin en serrant les fessiers, tiens 1 seconde en haut.'},
+  {id:'kickback_debout', n:'Extension de hanche debout', f:'glutes', eq:['corps'], k:'I', side:true, m:'Fessiers', mus:['Fessiers'], hard:'pont', cue:'Mains sur le dossier d’une chaise, buste légèrement penché. Tends une jambe vers l’arrière en serrant le fessier, sans cambrer, puis ramène-la.'},
   {id:'dc_barre', n:'Développé couché barre', f:'push_h', eq:['salle'], k:'P', gear:'barre', m:'Pectoraux · triceps · épaules', mus:['Pectoraux','Triceps','Épaules'], easy:'dc_halt', start:20, cue:'Omoplates serrées sur le banc. Descends la barre au milieu de la poitrine, puis pousse.'},
   {id:'dc_halt', n:'Développé couché haltères', f:'push_h', eq:['halteres'], k:'P', ph:true, m:'Pectoraux · triceps · épaules', mus:['Pectoraux','Triceps','Épaules'], easy:'pompes', hard:'dc_barre', start:6, cue:'Sur un banc ou au sol. Descends les haltères à hauteur de poitrine, coudes à 45°, puis pousse.'},
   {id:'dc_incline', n:'Développé incliné haltères', f:'push_h', eq:['halteres'], k:'P', ph:true, m:'Haut des pectoraux · épaules', mus:['Pectoraux','Épaules'], easy:'pompes', start:5, cue:'Banc incliné à 30°. Descends les haltères vers le haut de la poitrine, puis pousse vers le plafond.'},
@@ -372,6 +392,7 @@ const EX = [
   {id:'tirage_vert', n:'Tirage vertical poulie', f:'pull_v', eq:['salle'], k:'P', gear:'machine', m:'Dos (grand dorsal) · biceps', mus:['Dos','Biceps'], easy:'tirage_el', hard:'tractions', start:25, cue:'Tire la barre vers le haut de la poitrine, coudes vers le bas, sans balancer.'},
   {id:'tirage_el', n:'Tirage vertical à l’élastique', f:'pull_v', eq:['elastique'], k:'P', m:'Dos · biceps', mus:['Dos','Biceps'], hard:'tractions_neg', cue:'Élastique accroché en hauteur. Tire vers la poitrine en descendant les coudes.'},
   {id:'superman', n:'Superman', f:'pull_v', eq:['corps'], k:'I', m:'Bas du dos · dos', mus:['Bas du dos','Dos'], hard:'superman_tirage', cue:'Allongée sur le ventre, bras devant. Décolle bras et jambes, tiens 2 secondes, redescends.'},
+  {id:'anges_mur', n:'Anges au mur', f:'pull_v', eq:['corps'], k:'I', m:'Haut du dos · épaules', mus:['Dos','Épaules'], hard:'superman', cue:'Dos, tête et bras collés au mur, coudes pliés à 90°. Monte les bras en glissant contre le mur puis redescends en serrant les omoplates.'},
   {id:'oiseau', n:'Oiseau haltères', f:'rear', eq:['halteres'], k:'I', ph:true, m:'Arrière d’épaule · haut du dos', mus:['Épaules','Dos'], easy:'face_pull', start:3, cue:'Buste penché en avant, dos plat. Écarte les haltères sur les côtés, bras presque tendus, en serrant les omoplates.'},
   {id:'face_pull', n:'Face pull élastique', f:'rear', eq:['elastique'], k:'I', m:'Arrière d’épaule · haut du dos', mus:['Épaules','Dos'], hard:'oiseau', cue:'Élastique accroché à hauteur de visage. Tire vers ton front en écartant les mains, coudes hauts.'},
   {id:'elev_lat', n:'Élévations latérales haltères', f:'lateral', eq:['halteres'], k:'I', ph:true, m:'Épaules (faisceau latéral)', mus:['Épaules'], easy:'elev_lat_el', start:3, cue:'Bras presque tendus, monte les haltères sur les côtés jusqu’à hauteur d’épaules. Léger, contrôlé.'},
@@ -386,16 +407,18 @@ const EX = [
   {id:'mollets', n:'Mollets debout', f:'calves', eq:['corps'], k:'I', m:'Mollets', mus:['Mollets'], hard:'mollets_unilat', cue:'Monte sur la pointe des pieds, tiens 1 seconde, descends lentement.'},
   {id:'planche', n:'Planche', f:'core', eq:['corps'], k:'I', t:'time', m:'Abdos profonds · tronc', mus:['Abdos'], easy:'planche_genoux', hard:'planche_touche', cue:'Sur les avant-bras, corps aligné des épaules aux talons. Serre les fessiers et le ventre, respire.'},
   {id:'gainage_lat', n:'Gainage latéral', f:'core', eq:['corps'], k:'I', t:'time', side:true, m:'Obliques', mus:['Abdos'], easy:'gainage_lat_genoux', hard:'gainage_lat_jambe', cue:'Sur un avant-bras, corps de profil bien aligné. Fais le temps de chaque côté.'},
+  {id:'planche_mur', n:'Gainage debout contre un mur', f:'core', eq:['corps'], k:'I', t:'time', m:'Abdos profonds · tronc', mus:['Abdos'], hard:'planche', cue:'Avant-bras contre un mur, pieds reculés, corps bien aligné des épaules aux talons. Serre le ventre et respire.'},
   {id:'dead_bug', n:'Dead bug', f:'abs', eq:['corps'], k:'I', m:'Abdos profonds', mus:['Abdos'], easy:'dead_bug_jambes', hard:'crunch_inv', cue:'Sur le dos, bras et genoux en l’air. Tends un bras et la jambe opposée sans décoller le bas du dos.'},
   {id:'crunch', n:'Crunch', f:'abs', eq:['corps'], k:'I', m:'Grands droits', mus:['Abdos'], hard:'crunch_inv', cue:'Sur le dos, genoux pliés. Enroule le haut du dos en soufflant, sans tirer sur la nuque.'},
   {id:'crunch_inv', n:'Crunch inversé', f:'abs', eq:['corps'], k:'I', m:'Bas des abdos', mus:['Abdos'], easy:'crunch', hard:'releve_jambes', cue:'Sur le dos, jambes pliées en l’air. Enroule le bassin vers la poitrine en décollant les fesses, redescends lentement.'},
+  {id:'crunch_debout', n:'Crunch debout genou-coude', f:'abs', eq:['corps'], k:'I', m:'Abdos · obliques', mus:['Abdos'], hard:'dead_bug', cue:'Debout, mains derrière la tête. Monte un genou et rapproche le coude opposé en soufflant, puis change de côté.'},
   // Variantes seules (hors familles : jamais choisies par défaut, seulement via « trop dur » / « trop facile »)
   {id:'squat_saute', n:'Squat sauté', eq:['corps'], k:'P', m:'Quadriceps · fessiers', mus:['Quadriceps','Fessiers'], easy:'squat_pdc', cue:'Descends en squat puis saute le plus haut possible. Atterris en douceur, genoux fléchis.'},
   {id:'fentes_arriere', n:'Fentes arrière assistées', eq:['corps'], k:'P', m:'Quadriceps · fessiers', mus:['Quadriceps','Fessiers'], hard:'fentes', cue:'Une main sur un mur ou une chaise. Recule une jambe et descends doucement, puis reviens.'},
-  {id:'pompes_mur', n:'Pompes contre un mur', eq:['corps'], k:'P', m:'Pectoraux · triceps', mus:['Pectoraux','Triceps'], hard:'pompes_genoux', cue:'Mains au mur à hauteur d’épaules, pieds reculés. Approche la poitrine du mur, puis pousse.'},
+  {id:'pompes_mur', n:'Pompes contre un mur', f:'push_h', eq:['corps'], k:'P', m:'Pectoraux · triceps', mus:['Pectoraux','Triceps'], hard:'pompes_genoux', cue:'Mains au mur à hauteur d’épaules, pieds reculés. Approche la poitrine du mur, puis pousse.'},
   {id:'pike_genoux', n:'Pike sur les genoux', eq:['corps'], k:'P', m:'Épaules · triceps', mus:['Épaules','Triceps'], hard:'pike', cue:'Genoux au sol, fesses hautes. Descends la tête vers le sol entre tes mains.'},
   {id:'pike_sur', n:'Pike pieds surélevés', eq:['corps'], k:'P', m:'Épaules · triceps', mus:['Épaules','Triceps'], easy:'pike', cue:'Pieds sur une chaise, corps en V inversé. Descends la tête vers le sol entre tes mains.'},
-  {id:'rowing_serviette', n:'Rowing serviette à une porte', eq:['corps'], k:'P', m:'Dos · biceps', mus:['Dos','Biceps'], hard:'rowing_inv', cue:'Serviette passée autour d’une poignée de porte fermée. Penche-toi en arrière puis tire-toi vers la porte.'},
+  {id:'rowing_serviette', n:'Rowing serviette à une porte', f:'pull_h', eq:['corps'], k:'P', m:'Dos · biceps', mus:['Dos','Biceps'], hard:'rowing_inv', cue:'Serviette passée autour d’une poignée de porte fermée. Penche-toi en arrière puis tire-toi vers la porte.'},
   {id:'rowing_inv_sur', n:'Rowing inversé pieds surélevés', eq:['corps'], k:'P', m:'Dos · biceps', mus:['Dos','Biceps'], easy:'rowing_inv', cue:'Sous une table solide, pieds sur une chaise. Tire ta poitrine vers la table, corps gainé.'},
   {id:'tractions_lest', n:'Tractions lestées', eq:['traction'], k:'P', m:'Dos · biceps', mus:['Dos','Biceps'], easy:'tractions', cue:'Comme une traction pronation, avec un sac lesté ou un haltère entre les pieds.'},
   {id:'tractions_assist', n:'Tractions assistées élastique', eq:['traction'], k:'P', m:'Dos · biceps', mus:['Dos','Biceps'], hard:'tractions_neg', cue:'Élastique accroché à la barre sous un pied ou un genou. Il t’aide à monter le menton au-dessus de la barre.'},
@@ -410,6 +433,7 @@ const EX = [
   {id:'dead_bug_jambes', n:'Dead bug jambes seules', eq:['corps'], k:'I', m:'Abdos profonds', mus:['Abdos'], hard:'dead_bug', cue:'Sur le dos, genoux en l’air. Descends une jambe à la fois vers le sol sans décoller le bas du dos.'},
   {id:'releve_jambes', n:'Relevé de jambes', eq:['corps'], k:'I', m:'Bas des abdos', mus:['Abdos'], easy:'crunch_inv', cue:'Sur le dos, jambes tendues. Monte-les à la verticale puis redescends lentement sans toucher le sol.'}
 ];
+EX.forEach(e=>{ e.avoid=Object.keys(AVOID).filter(z=>AVOID[z].includes(e.id)); });
 const EXM = Object.fromEntries(EX.map(e=>[e.id,e]));
 
 /* =====================================================================
@@ -425,8 +449,9 @@ const isWeighted = ex=>ex.start!=null;
 function mondayOf(d){ d=new Date(d); d.setHours(0,0,0,0); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d; }
 
 // Matériel : « Salle » donne accès à tout le reste ; le poids du corps est toujours là.
-function eqSet(p){ const s=new Set(['corps',...(p.equipment||[])]); if(s.has('salle')) ['halteres','elastique','traction','kettlebell'].forEach(x=>s.add(x)); return s; }
-function available(ex,p){ const s=eqSet(p); return ex.eq.some(e=>s.has(e)); }
+function eqSet(p){ const s=new Set(['corps',...(p.equipment||[])]); if(s.has('salle')) ['halteres','elastique','traction','kettlebell','marche'].forEach(x=>s.add(x)); return s; }
+// Disponible = matériel présent et aucune zone à ménager sollicitée.
+function available(ex,p){ const s=eqSet(p); return ex.eq.some(e=>s.has(e)) && !(ex.avoid||[]).some(z=>(p.avoid||[]).includes(z)); }
 
 // Programme selon jours ET niveau. null = 6 jours en débutant ou reprise (proposer 4 ou 5).
 function programFor(p){ const row=PROGRAMS[p.days]; return row ? row[LEVELS[p.level].col] : null; }
@@ -460,7 +485,10 @@ function setsFor(p,pos,deload){
 function slotExercise(key,i,p,used){
   const fam=TPL[key].slots[i], chosen=p.swaps && p.swaps[key+':'+i];
   if(chosen && EXM[chosen] && available(EXM[chosen],p) && !used.has(chosen)) return EXM[chosen];
-  return EX.find(e=>e.f===fam && available(e,p) && !used.has(e.id)) || null;
+  const ex=EX.find(e=>e.f===fam && available(e,p) && !used.has(e.id)) || null;
+  // Débutant au poids du corps : on commence par la variante plus facile quand elle existe.
+  if(ex && p.level==='debutant' && ex.eq.includes('corps') && !ex.t){ const e2=ex.easy && EXM[ex.easy]; if(e2 && available(e2,p) && !used.has(e2.id)) return e2; }
+  return ex;
 }
 // Séance type → liste d'exercices. La durée fixe le nombre ; un emplacement sans exercice est sauté.
 function plan(key,p,opts){
@@ -976,7 +1004,7 @@ function renderStats(){
 
 function renderProfile(){
   const p=S.profile, xp=totalXp(), lv=levelInfo(xp);
-  const rows=[['Objectif',GOALS[p.goal].n],['Fréquence',p.days+' séance'+(p.days>1?'s':'')+' par semaine'],['Durée',p.duration+' min par séance'],['Niveau',LEVELS[p.level].n],['Matériel',(p.equipment||[]).map(e=>(EQUIP.find(x=>x.id===e)||{n:e}).n).join(', ')||'Poids du corps'],['Cardio',p.cardio?p.cardio+' fois par semaine':'Non']];
+  const rows=[['Objectif',GOALS[p.goal].n],['Fréquence',p.days+' séance'+(p.days>1?'s':'')+' par semaine'],['Durée',p.duration+' min par séance'],['Niveau',LEVELS[p.level].n],['Matériel',(p.equipment||[]).map(e=>(EQUIP.find(x=>x.id===e)||{n:e}).n).join(', ')||'Poids du corps'],['À ménager',(p.avoid||[]).map(z=>(ZONES.find(x=>x.id===z)||{n:z}).n).join(', ')||'Rien'],['Cardio',p.cardio?p.cardio+' fois par semaine':'Non']];
   return `<div class="stack">
     <header class="row" style="gap:16px">
       <span style="width:76px;height:76px;border-radius:50%;display:grid;place-items:center;background:var(--grad);color:#fff;font-weight:500;font-size:2rem;flex:none">${esc((p.name||'?').trim().charAt(0).toUpperCase())}</span>
@@ -1026,7 +1054,7 @@ function renderLogin(){
 
 /* ---------- Questionnaire ---------- */
 function renderOnboarding(){
-  const st=ui.ob.step, d=ui.ob.data, N=6;
+  const st=ui.ob.step, d=ui.ob.data, N=7;
   const steps=`<div class="steps" aria-hidden="true">${Array.from({length:N-1},(_,i)=>`<i class="${i<st?'on':''}"></i>`).join('')}</div>`;
   const nav=(ok,label='Continuer')=>`<div class="dock"><div class="dock-in">${st>0?`<button class="iconbtn" data-a="obback" aria-label="Retour">${ic('back')}</button>`:''}<button class="btn primary big" data-a="obnext" ${ok?'':'disabled'}>${label}</button></div></div>`;
   const choice=(k,v,t,s,multi)=>{const on=multi?(d[k]||[]).includes(v):d[k]===v;return `<button class="choice" data-a="obpick" data-k="${k}" data-v="${v}" ${multi?'data-multi="1"':''} aria-pressed="${on}"><span class="grow"><span class="t">${t}</span><br><span class="s">${s}</span></span><span class="tick">${on?ic('check'):''}</span></button>`};
@@ -1038,7 +1066,7 @@ function renderOnboarding(){
       <div class="list card" style="padding-block:4px">
         ${[['dumbbell','Tu sais toujours quoi faire','La prochaine séance est prête, avec les charges à viser.'],['timer','Guidée pendant la séance','Échauffement, séries, repos qui se lance tout seul.'],['chart','Tes progrès en un coup d’œil','Records, séries par muscle, semaines tenues.']].map(([i,t,s])=>`<div class="item"><span class="badge-dot accent">${ic(i)}</span><span class="grow"><span class="t">${t}</span><br><span class="s">${s}</span></span></div>`).join('')}
       </div>
-      <p class="muted" style="font-size:.9rem">6 questions rapides pour construire ton programme. Tu pourras tout changer ensuite.</p>
+      <p class="muted" style="font-size:.9rem">7 questions rapides pour construire ton programme. Tu pourras tout changer ensuite.</p>
     </div>`+nav(true,'C’est parti');
   else if(st===1) body=`<div class="stack">${steps}<h1>Comment tu t’appelles&nbsp;?</h1>
       <div class="field"><label for="ob-name">Ton prénom</label><input id="ob-name" class="input" autocomplete="given-name" maxlength="30" value="${esc(d.name||'')}" placeholder="Ex. Aurélie"></div>
@@ -1056,8 +1084,13 @@ function renderOnboarding(){
   else if(st===4) body=`<div class="stack">${steps}<h1>Ton niveau aujourd’hui</h1>
       <div class="choices">${Object.entries(LEVELS).map(([k,l])=>choice('level',k,l.n,l.s)).join('')}</div>
       ${d.level&&d.days?`<p class="hint accent">${ic('info')}<span>${programHint(d.days,d.level)}</span></p>`:''}</div>`+nav(d.level);
-  else if(st===5) body=`<div class="stack">${steps}<h1>Tu veux aussi du cardio&nbsp;?</h1>
+  else if(st===5) body=`<div class="stack">${steps}<h1>Des zones à ménager&nbsp;?</h1>
+      <p class="muted">Coche ce qui te gêne : on écarte les exercices qui sollicitent cette zone. Tu peux ne rien cocher.</p>
+      <div class="choices">${ZONES.map(z=>choice('avoid',z.id,z.n,z.s,true)).join('')}</div>
+      <p class="muted" style="font-size:.85rem">En cas de douleur ou de problème de santé, demande l’avis d’un médecin avant de commencer.</p></div>`+nav(true,(d.avoid||[]).length?'Continuer':'Rien à signaler');
+  else if(st===6) body=`<div class="stack">${steps}<h1>Tu veux aussi du cardio&nbsp;?</h1>
       <p class="muted">En plus de la muscu, sur un jour à part. L’OMS conseille 150 minutes d’activité modérée par semaine.</p>
+      ${d.goal==='perte'?`<p class="hint accent">${ic('info')}<span>Pour perdre du poids, le cardio aide beaucoup : 2 fois par semaine, de la marche rapide suffit.</span></p>`:''}
       <div class="choices">${[[0,'Non','Seulement la muscu'],[1,'1 fois par semaine','Marche rapide, course, vélo…'],[2,'2 fois par semaine','Pour aller vers les 150 minutes']].map(([v,t,s])=>`<button class="choice" data-a="obset" data-k="cardio" data-v="${v}" aria-pressed="${d.cardio===v}"><span class="grow"><span class="t">${t}</span><br><span class="s">${s}</span></span><span class="tick">${d.cardio===v?ic('check'):''}</span></button>`).join('')}</div></div>`+nav(d.cardio!=null, needsFewerDays(d.days,d.level)?'Continuer':'Créer mon programme');
   else body=`<div class="stack">${steps}<h1>6 jours, c’est beaucoup</h1>
       <p class="muted">Pour progresser, tes muscles ont besoin de récupérer. Quand on débute ou qu’on reprend, 4 ou 5 séances par semaine donnent de meilleurs résultats.</p>
@@ -1351,6 +1384,7 @@ function renderSheet(){
       <div class="field"><label>Durée</label>${seg('duration',[20,30,45,60],' min')}</div>
       <div class="field"><label>Niveau</label><div class="row wrap" style="gap:8px">${Object.entries(LEVELS).map(([k,l])=>`<button class="chip ${d.level===k?'accent':''}" style="padding:8px 14px;font-size:.95rem" data-a="setpick" data-k="level" data-v="${k}">${l.n}</button>`).join('')}</div></div>
       <div class="field"><label>Matériel</label><div class="row wrap" style="gap:8px">${EQUIP.filter(e=>e.id!=='corps').map(e=>`<button class="chip ${(d.equipment||[]).includes(e.id)?'accent':''}" style="padding:8px 14px;font-size:.95rem" data-a="setequip" data-v="${e.id}">${e.n}</button>`).join('')}</div></div>
+      <div class="field"><label>Zones à ménager</label><div class="row wrap" style="gap:8px">${ZONES.map(z=>`<button class="chip ${(d.avoid||[]).includes(z.id)?'accent':''}" style="padding:8px 14px;font-size:.95rem" data-a="setavoid" data-v="${z.id}">${z.n}</button>`).join('')}</div></div>
       <div class="field"><label>Cardio par semaine</label>${seg('cardio',[0,1,2])}</div>
       <button class="btn primary big" data-a="setsave" ${few?'disabled':''}>Enregistrer</button></div>`;
   }
@@ -1377,9 +1411,10 @@ const A = {
   tab(d){ ui.tab=d.v; window.scrollTo(0,0); render(); },
   obnext(){
     const o=ui.ob, d=o.data; if(o.step===1){ const n=$('#ob-name'); if(n) d.name=n.value.trim(); }
-    const last = o.step===6 || (o.step===5 && !needsFewerDays(d.days,d.level));
+    const last = o.step===7 || (o.step===6 && !needsFewerDays(d.days,d.level));
+    if(o.step===5 && d.cardio==null && d.goal==='perte') d.cardio=2;   // conseil par défaut pour perdre du poids
     if(!last){ o.step++; window.scrollTo(0,0); render(); return; }
-    Store.saveProfile({id:uid(), name:d.name, goal:d.goal, days:d.days, duration:d.duration, level:d.level, equipment:d.equipment||[], cardio:d.cardio||0, swaps:{}, bodyweights:[], createdAt:new Date().toISOString()});
+    Store.saveProfile({id:uid(), name:d.name, goal:d.goal, days:d.days, duration:d.duration, level:d.level, equipment:d.equipment||[], avoid:d.avoid||[], cardio:d.cardio||0, swaps:{}, bodyweights:[], createdAt:new Date().toISOString()});
     ui.tab='home'; render(); toast('Ton programme est prêt.');
   },
   obback(){ if(ui.ob.step>0){ const n=$('#ob-name'); if(n) ui.ob.data.name=n.value.trim(); ui.ob.step--; render(); } },
@@ -1437,6 +1472,7 @@ const A = {
   sessdel(d){ Store.deleteSession(d.v); ui.sheet=null; render(); toast('Séance supprimée.'); },
   setpick(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; ui.sheet.data[d.k]=isNaN(+d.v)?d.v:+d.v; renderLayer(); },
   setequip(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; const a=new Set(ui.sheet.data.equipment||[]); a.has(d.v)?a.delete(d.v):a.add(d.v); ui.sheet.data.equipment=[...a]; renderLayer(); },
+  setavoid(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; const a=new Set(ui.sheet.data.avoid||[]); a.has(d.v)?a.delete(d.v):a.add(d.v); ui.sheet.data.avoid=[...a]; renderLayer(); },
   setsave(){ const d=ui.sheet.data, n=$('#set-name'); if(needsFewerDays(d.days,d.level)) return; d.name=(n&&n.value.trim())||S.profile.name; Store.saveProfile(d); ui.sheet=null; render(); toast('Réglages enregistrés. Ton programme est à jour.'); },
   signin(){ Store.signIn(); },
   signout(){ Store.signOut(); },
