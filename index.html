@@ -1,5 +1,15 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E0507">
+<meta name="apple-mobile-web-app-title" content="Askesia">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Askesia</title>
+</head>
+<body>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700&display=swap">
@@ -208,6 +218,7 @@ tr.warm.done .check{background:var(--good);color:var(--on-good);border-color:tra
 .sync i{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none;margin-top:.45em}
 .sync.on i{background:#8DF2CF;box-shadow:0 0 10px rgba(141,242,207,.7)}
 .sync b{color:var(--ink);font-weight:500}
+.btn.google{background:#FFFFFF;color:#1F1F1F;border:1px solid rgba(255,255,255,.6);box-shadow:0 10px 30px rgba(0,0,0,.35);font-weight:500}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -599,79 +610,153 @@ const ui = { tab:'home', screen:null, ob:{step:0, data:{}}, sheet:null, summary:
 let draft = lsGet('reprise.draft');
 const now = ()=>Date.now();
 const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
-/* Stockage : une copie sur l'appareil (démarrage instantané, hors ligne) et, si le compte Claude
-   répond, une copie en ligne privée (data/users/<id>/…) qui suit l'utilisatrice d'un appareil à l'autre. */
+/* =====================================================================
+   COMPTE ET SYNCHRONISATION — Firebase (offre gratuite Spark).
+   Une copie sur l'appareil (localStorage) pour démarrer vite et sans réseau ;
+   si l'utilisatrice est connectée avec Google, une copie en ligne dans
+   Firestore : users/{uid} (profil), users/{uid}/sessions/{id} (séances),
+   users/{uid}/state/draft (séance en cours). Firestore garde aussi sa
+   propre copie hors ligne et renvoie les écritures dès que le réseau revient.
+   ===================================================================== */
+const FIREBASE_VERSION = '10.12.2';
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
+  authDomain: "askesia---reprise.firebaseapp.com",
+  projectId: "askesia---reprise",
+  storageBucket: "askesia---reprise.firebasestorage.app",
+  messagingSenderId: "684619492785",
+  appId: "1:684619492785:web:ae184c40591a1626d96190"
+};
+const GUEST_KEY = 'askesia.guest';   // « Continuer sans compte » choisi
+const OWNER_KEY = 'askesia.owner';   // à qui appartiennent les données de l'appareil : un uid ou 'guest'
+
 const Store = {
-  mode:'local', db:null, uid:null, profRef:null, sesCol:null, draftRef:null, chain:Promise.resolve(), draftT:null,
+  authState:'pending',   // pending | in | out | unavailable
+  fb:null, auth:null, db:null, user:null, uid:null, unsub:[], draftT:null,
   init(){
-    S.profile=lsGet('reprise.profile'); S.sessions=lsGet('reprise.sessions')||[]; S.ready=true; render();
-    this.connect();
+    S.profile=lsGet('reprise.profile'); S.sessions=lsGet('reprise.sessions')||[];
+    this.load().catch(e=>{ console.warn('Firebase indisponible', e); this.ready('unavailable'); });
+    // Sans réseau au démarrage, on n'attend pas plus de 5 secondes.
+    setTimeout(()=>{ if(!S.ready) this.ready('unavailable'); },5000);
   },
-  cache(){ lsSet('reprise.profile',S.profile); lsSet('reprise.sessions',S.sessions); },
-  // Une écriture à la fois ; une panne réseau ne bloque jamais l'appli.
-  queue(fn){ this.chain=this.chain.then(fn).catch(e=>{ console.warn(e); if(e&&e.code==='quota_exceeded') toast('Sauvegarde en ligne pleine : tes données restent sur cet appareil.'); }); return this.chain; },
-  async connect(){
-    try{
-      if(!(window.claude && window.claude.use)) return;
-      const [db,user]=await Promise.all([window.claude.use('db'), window.claude.use('user')]);
-      if(!db || !user) return;
-      const id=await user.id(); if(!id) return;
-      this.db=db; this.uid=id;
-      this.profRef=db.doc('data/users/'+id+'/profile');
-      this.sesCol=this.profRef.collection('sessions');
-      this.draftRef=db.doc('data/users/'+id+'/draft');
-      await this.sync();
-      this.mode='cloud'; render();
-      this.listen();
-    }catch(e){ console.warn('Sauvegarde en ligne indisponible', e); }
+  ready(state){ if(state) this.authState=state; S.ready=true; render(); },
+  async load(){
+    if(/COLLE_ICI/.test(FIREBASE_CONFIG.apiKey)) throw new Error('Clé API Firebase manquante dans index.html');
+    const base='https://www.gstatic.com/firebasejs/'+FIREBASE_VERSION+'/';
+    const [app,auth,fs]=await Promise.all([import(base+'firebase-app.js'), import(base+'firebase-auth.js'), import(base+'firebase-firestore.js')]);
+    const a=app.initializeApp(FIREBASE_CONFIG);
+    let db;
+    try{ db=fs.initializeFirestore(a,{localCache:fs.persistentLocalCache({tabManager:fs.persistentMultipleTabManager()})}); }
+    catch(e){ console.warn('Cache hors ligne Firestore indisponible', e); db=fs.getFirestore(a); }
+    this.fb={auth,fs}; this.auth=auth.getAuth(a); this.db=db;
+    // Retour d'une connexion par redirection (iPhone quand la fenêtre est bloquée).
+    auth.getRedirectResult(this.auth).catch(e=>{ const m=authMessage(e); if(m) toast(m); });
+    auth.onAuthStateChanged(this.auth,u=>{ this.onAuth(u).catch(e=>{ console.warn(e); this.ready(); }); });
   },
-  // Première synchro : on fusionne l'appareil et le compte, sans rien perdre.
+  async onAuth(u){
+    this.unsub.forEach(f=>f()); this.unsub=[];
+    if(!u){ this.user=null; this.uid=null; this.ready('out'); return; }
+    this.user=u; this.uid=u.uid; this.authState='in';
+    lsSet(GUEST_KEY,null);
+    try{ await this.sync(); }catch(e){ console.warn('Synchro reportée', e); }
+    this.ready('in');
+    this.listen();
+  },
+  ref(...p){ return this.fb.fs.doc(this.db,'users',this.uid,...p); },
+  sesCol(){ return this.fb.fs.collection(this.db,'users',this.uid,'sessions'); },
+  // Une écriture ne bloque jamais l'appli : Firestore la garde et l'envoie dès que possible.
+  write(fn){ if(!this.uid) return; try{ Promise.resolve(fn()).catch(e=>console.warn('Écriture en ligne refusée', e)); }catch(e){ console.warn(e); } },
+  // Première synchro : réunit l'appareil et le compte, sans doublon (une séance = un identifiant).
   async sync(){
-    const [ps, qs, ds]=await Promise.all([this.profRef.get(), this.sesCol.get(), this.draftRef.get()]);
-    const cloudProf=ps.exists ? clone(ps.data()) : null;
-    const cloudSes=qs.docs.map(d=>clone(d.data()));
+    const fs=this.fb.fs, uid=this.uid, owner=lsGet(OWNER_KEY);
+    const [ps,qs,ds]=await Promise.all([fs.getDoc(this.ref()), fs.getDocs(this.sesCol()), fs.getDoc(this.ref('state','draft'))]);
+    const cloudProf=ps.exists()?clone(ps.data()):null, cloudSes=qs.docs.map(d=>clone(d.data()));
+    const cloudDraft=ds.exists()&&ds.data().draft?clone(ds.data().draft):null;
+    const cloudEmpty=!cloudProf && !cloudSes.length;
     const newer=(a,b)=>(a&&a.updatedAt||'')>(b&&b.updatedAt||'');
-    // Profil : le plus récent gagne.
-    if(cloudProf && !(S.profile && newer(S.profile,cloudProf))) S.profile=cloudProf;
-    else if(S.profile){ const body=clone(S.profile); this.queue(()=>this.profRef.set(body)); }
-    // Séances : union par identifiant, la version la plus récente gagne.
-    const byId=new Map(cloudSes.map(x=>[x.id,x]));
-    S.sessions.forEach(x=>{ const c=byId.get(x.id); if(!c || newer(x,c)){ byId.set(x.id,x); const body=clone(x); this.queue(()=>this.sesCol.doc(x.id).set(body)); } });
-    S.sessions=[...byId.values()].sort((a,b)=>a.date<b.date?-1:1);
-    // Séance en cours : celle de l'appareil d'abord, sinon celle du compte.
-    if(!draft && ds.exists){ const d=clone(ds.data()); if(d && d.ex){ draft=d.ex?d:null; lsSet('reprise.draft',draft); } }
-    else if(draft){ const body=clone(draft); this.queue(()=>this.draftRef.set(body)); }
+    if(owner===uid){
+      // Mêmes données, peut-être modifiées hors ligne : le plus récent gagne.
+      if(cloudProf && !newer(S.profile,cloudProf)) S.profile=cloudProf; else if(S.profile) this.write(()=>fs.setDoc(this.ref(),clone(S.profile)));
+      const byId=new Map(cloudSes.map(x=>[x.id,x]));
+      S.sessions.forEach(x=>{ const c=byId.get(x.id); if(!c||newer(x,c)){ byId.set(x.id,x); this.write(()=>fs.setDoc(fs.doc(this.sesCol(),x.id),clone(x))); } });
+      S.sessions=[...byId.values()];
+    } else if(cloudEmpty && (owner==null || owner==='guest') && (S.profile || S.sessions.length)){
+      // Première connexion, compte vide : on transfère ce qui est sur l'appareil.
+      const batch=fs.writeBatch(this.db);
+      if(S.profile) batch.set(this.ref(),clone(S.profile));
+      S.sessions.forEach(x=>batch.set(fs.doc(this.sesCol(),x.id),clone(x)));
+      this.write(()=>batch.commit());
+      if(draft) this.write(()=>fs.setDoc(this.ref('state','draft'),{draft:clone(draft)}));
+      toast('Tes données sont maintenant sauvegardées sur ton compte.');
+    } else {
+      // Le compte a déjà des données (ou l'appareil appartenait à quelqu'un d'autre) : on prend celles du compte.
+      if(owner==='guest' && S.sessions.length) lsSet('askesia.guestBackup',{profile:S.profile,sessions:S.sessions,at:new Date().toISOString()});
+      S.profile=cloudProf; S.sessions=cloudSes;
+      draft=cloudDraft; lsSet('reprise.draft',draft);
+    }
+    if(!draft && cloudDraft){ draft=cloudDraft; lsSet('reprise.draft',draft); }
+    S.sessions.sort((a,b)=>a.date<b.date?-1:1);
     this.cache();
   },
   // Les changements faits sur un autre appareil arrivent en direct.
   listen(){
-    this.profRef.onSnapshot(snap=>{
-      if(snap.metadata.hasPendingWrites) return;
-      const d=snap.exists ? clone(snap.data()) : null;
-      if(JSON.stringify(d)===JSON.stringify(S.profile)) return;
-      if(!d && S.profile) return;
-      S.profile=d; this.cache(); render();
-    },()=>{});
-    this.sesCol.onSnapshot(qs=>{
-      if(qs.metadata.hasPendingWrites || qs.metadata.fromCache) return;
+    const fs=this.fb.fs;
+    this.unsub.push(fs.onSnapshot(this.ref(),snap=>{
+      if(snap.metadata.hasPendingWrites || !snap.exists()) return;
+      const d=clone(snap.data()); if(JSON.stringify(d)===JSON.stringify(S.profile)) return;
+      S.profile=d; this.cache(); if(ui.screen!=='workout') render();
+    },e=>console.warn(e)));
+    this.unsub.push(fs.onSnapshot(this.sesCol(),qs=>{
+      if(qs.metadata.hasPendingWrites) return;
       const list=qs.docs.map(d=>clone(d.data())).sort((a,b)=>a.date<b.date?-1:1);
       if(JSON.stringify(list)===JSON.stringify(S.sessions)) return;
       S.sessions=list; this.cache(); if(ui.screen!=='workout') render();
-    },()=>{});
+    },e=>console.warn(e)));
   },
-  saveProfile(p){ S.profile=stamp(p); this.cache(); if(this.profRef){ const body=clone(S.profile); this.queue(()=>this.profRef.set(body)); } },
+  cache(){ lsSet('reprise.profile',S.profile); lsSet('reprise.sessions',S.sessions); lsSet(OWNER_KEY,this.uid||'guest'); },
+  saveProfile(p){ S.profile=stamp(p); this.cache(); this.write(()=>this.fb.fs.setDoc(this.ref(),clone(S.profile))); },
   saveSession(x){ stamp(x); S.sessions=S.sessions.filter(y=>y.id!==x.id).concat([x]).sort((a,b)=>a.date<b.date?-1:1); this.cache();
-    if(this.sesCol){ const body=clone(x); this.queue(()=>this.sesCol.doc(x.id).set(body)); } },
-  deleteSession(id){ S.sessions=S.sessions.filter(x=>x.id!==id); this.cache(); if(this.sesCol) this.queue(()=>this.sesCol.doc(id).delete()); },
+    this.write(()=>this.fb.fs.setDoc(this.fb.fs.doc(this.sesCol(),x.id),clone(x))); },
+  deleteSession(id){ S.sessions=S.sessions.filter(x=>x.id!==id); this.cache(); this.write(()=>this.fb.fs.deleteDoc(this.fb.fs.doc(this.sesCol(),id))); },
   // La séance en cours part en ligne au plus une fois toutes les 2 secondes.
-  saveDraft(){ lsSet('reprise.draft',draft); if(!this.draftRef) return; clearTimeout(this.draftT);
-    this.draftT=setTimeout(()=>{ const body=draft?clone(draft):null; this.queue(()=>body?this.draftRef.set(body):this.draftRef.delete()); },2000); },
+  saveDraft(){ lsSet('reprise.draft',draft); if(!this.uid) return; clearTimeout(this.draftT);
+    this.draftT=setTimeout(()=>{ const body=draft?{draft:clone(draft)}:null; this.write(()=>body?this.fb.fs.setDoc(this.ref('state','draft'),body):this.fb.fs.deleteDoc(this.ref('state','draft'))); },2000); },
   resetAll(){
     const ids=S.sessions.map(x=>x.id);
-    S.profile=null; S.sessions=[]; this.cache(); draft=null; lsSet('reprise.draft',null);
-    if(this.profRef){ ids.forEach(id=>this.queue(()=>this.sesCol.doc(id).delete())); this.queue(()=>this.profRef.delete()); this.queue(()=>this.draftRef.delete()); }
-  }
+    S.profile=null; S.sessions=[]; draft=null; lsSet('reprise.draft',null); this.cache();
+    if(this.uid){ const fs=this.fb.fs, b=fs.writeBatch(this.db); ids.forEach(id=>b.delete(fs.doc(this.sesCol(),id))); b.delete(this.ref('state','draft')); b.delete(this.ref()); this.write(()=>b.commit()); }
+  },
+  // Connexion Google : fenêtre, ou redirection si la fenêtre est bloquée (iPhone).
+  async signIn(){
+    if(!this.auth){ toast(navigator.onLine===false?'Pas de connexion internet.':'Connexion indisponible pour le moment.'); return; }
+    const A=this.fb.auth, provider=new A.GoogleAuthProvider();
+    provider.setCustomParameters({prompt:'select_account'});
+    try{ await A.signInWithPopup(this.auth,provider); }
+    catch(e){
+      if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/cancelled-popup-request'].includes(e.code)){
+        try{ await A.signInWithRedirect(this.auth,provider); }catch(e2){ const m=authMessage(e2); if(m) toast(m); }
+      } else { const m=authMessage(e); if(m) toast(m); }
+    }
+  },
+  // Déconnexion : les données restent sur le compte et quittent cet appareil.
+  async signOut(){
+    if(!this.auth) return;
+    clearTimeout(this.draftT);
+    await this.fb.auth.signOut(this.auth);
+    S.profile=null; S.sessions=[]; draft=null;
+    ['reprise.profile','reprise.sessions','reprise.draft',OWNER_KEY,GUEST_KEY].forEach(k=>lsSet(k,null));
+    ui.screen=null; ui.sheet=null; ui.tab='home'; ui.ob={step:0,data:{}}; render();
+  },
+  continueAsGuest(){ lsSet(GUEST_KEY,true); if(!lsGet(OWNER_KEY)) lsSet(OWNER_KEY,'guest'); render(); }
 };
+function authMessage(e){
+  const c=e&&e.code||'';
+  if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request'||c==='auth/user-cancelled') return '';
+  if(c==='auth/network-request-failed') return 'Pas de connexion internet. Réessaie dans un instant.';
+  if(c==='auth/unauthorized-domain') return 'Ce site n’est pas autorisé dans Firebase (domaines autorisés).';
+  if(c==='auth/invalid-api-key'||c==='auth/api-key-not-valid.-please-pass-a-valid-api-key.') return 'La clé API Firebase est incorrecte dans index.html.';
+  return 'Connexion impossible pour le moment.';
+}
 const workouts = ()=>S.sessions.filter(s=>s.kind==='workout');
 const cardios = ()=>S.sessions.filter(s=>s.kind==='cardio'||s.kind==='activity');
 
@@ -703,10 +788,11 @@ function weekMinutes(d){ const m=+mondayOf(d), e=m+7*DAY; return S.sessions.redu
 
 /* ---------- Rendu ---------- */
 function render(){
-  const root=$('#root'); if(!S.ready){ root.innerHTML=''; return; }
+  const root=$('#root'); if(!S.ready){ root.innerHTML=renderSplash(); return; }
   if(ui.screen==='workout' && draft) readInputs();
   let html;
-  if(!S.profile) html=renderOnboarding();
+  if(Store.authState==='out' && !lsGet(GUEST_KEY)) html=renderLogin();
+  else if(!S.profile) html=renderOnboarding();
   else if(ui.screen==='workout' && draft) html=(draft.warmup && !draft.warmup.done) ? renderWarmup() : renderWorkout();
   else if(ui.screen==='summary' && ui.summary) html=renderSummary();
   else html=renderTab();
@@ -827,12 +913,32 @@ function renderProfile(){
     </section>
     <section class="card stack-s">
       <span class="eyebrow">Mes données</span>
-      ${Store.mode==='cloud'
-        ?`<p class="sync on"><i></i><span><b>Sauvegardées en ligne</b> sur ton compte Claude. Tu les retrouves sur ton iPhone et ton ordinateur, même sans internet : la synchro reprend toute seule.</span></p>`
-        :`<p class="sync"><i></i><span><b>Sur cet appareil uniquement.</b> Ouvre Askesia connectée à ton compte Claude pour sauvegarder tes séances en ligne.</span></p>`}
+      ${Store.authState==='in'
+        ?`<p class="sync on"><i></i><span><b>Connectée avec ${esc(Store.user&&Store.user.email||'ton compte Google')}</b><br>Tes séances sont sauvegardées en ligne et synchronisées sur tous tes appareils, même hors connexion.</span></p>
+          <button class="btn ghost small" style="align-self:flex-start" data-a="signout">Se déconnecter</button>`
+        :`<p class="sync"><i></i><span><b>Sans compte.</b> Tes données restent uniquement sur cet appareil.</span></p>
+          <button class="btn big google" data-a="signin">${GOOGLE_G} Se connecter pour synchroniser</button>`}
       <button class="btn danger small" style="align-self:flex-start" data-a="sheet" data-v="reset">${ic('trash')} Tout effacer</button>
     </section>
   </div>`;
+}
+
+
+/* ---------- Connexion ---------- */
+const GOOGLE_G='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6H1.3a12 12 0 0 0 0 10.8z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z"/></svg>';
+function renderSplash(){ return `<main class="app full"><div class="stack" style="padding-top:30vh;align-items:center;text-align:center"><h1 class="hero-title">Askesia</h1><p class="muted">Chargement…</p></div></main>`; }
+function renderLogin(){
+  return `<main class="app full"><div class="stack" style="padding-top:12vh">
+    <span class="eyebrow">Ton carnet d’entraînement</span>
+    <h1 class="hero-title">Askesia</h1>
+    <p style="font-size:1.12rem;max-width:30em">On ne devient pas fort d’un coup : on se façonne, séance après séance.</p>
+    <section class="card stack" style="margin-top:12px">
+      <div class="stack-s"><h2>Connexion</h2><p class="muted" style="font-size:.92rem">Connecte-toi pour retrouver tes séances sur tous tes appareils. Tu peux aussi commencer sans compte et te connecter plus tard : rien ne sera perdu.</p></div>
+      <button class="btn big google" data-a="signin">${GOOGLE_G} Se connecter avec Google</button>
+      <button class="btn ghost big" data-a="guest">Continuer sans compte</button>
+    </section>
+    <p class="muted" style="font-size:.82rem">Sans compte, tes données restent uniquement sur cet appareil.</p>
+  </div></main>`;
 }
 
 /* ---------- Questionnaire ---------- */
@@ -1214,6 +1320,9 @@ const A = {
   setpick(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; ui.sheet.data[d.k]=isNaN(+d.v)?d.v:+d.v; renderLayer(); },
   setequip(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; const a=new Set(ui.sheet.data.equipment||[]); a.has(d.v)?a.delete(d.v):a.add(d.v); ui.sheet.data.equipment=[...a]; renderLayer(); },
   setsave(){ const d=ui.sheet.data, n=$('#set-name'); if(needsFewerDays(d.days,d.level)) return; d.name=(n&&n.value.trim())||S.profile.name; Store.saveProfile(d); ui.sheet=null; render(); toast('Réglages enregistrés. Ton programme est à jour.'); },
+  signin(){ Store.signIn(); },
+  signout(){ Store.signOut(); },
+  guest(){ Store.continueAsGuest(); },
   resetgo(){ Store.resetAll(); ui.sheet=null; ui.ob={step:0,data:{}}; ui.screen=null; render(); }
 };
 document.addEventListener('click',e=>{
@@ -1236,6 +1345,5 @@ if(draft) ui.screen=null;
 Store.init();
 })();
 </script>
-
-
-</body></html>
+</body>
+</html>
