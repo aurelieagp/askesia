@@ -229,13 +229,38 @@ tr.warm.done .check{background:var(--good);color:var(--on-good);border-color:tra
 .badge-art.got{background:var(--cta);color:#fff;border-color:rgba(255,255,255,.35);box-shadow:0 8px 22px var(--cta-glow)}
 .badge-art .icon{width:28px;height:28px}
 .badge-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-.badge-art:has(img){background:none;border:0;box-shadow:none}
+.badge-art:has(img),.badge-art.got:has(img){background:none;border:0;box-shadow:none}
 .badge-art:has(img) .icon{display:none}
-.off .badge-art img{filter:grayscale(1) brightness(.8)}
+.badge-art.locked img{filter:grayscale(1);opacity:.45}
+.badge-art.got img{filter:drop-shadow(0 0 10px rgba(255,208,142,.25))}
 .badge-hero .badge-art{width:120px;height:120px}
 .badge-hero .badge-art .icon{width:52px;height:52px}
 .update{position:fixed;left:16px;right:16px;top:calc(12px + env(safe-area-inset-top,0px));z-index:70;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 8px 8px 18px;border-radius:999px;background:var(--bar-glass);border:1px solid var(--edge);box-shadow:inset 0 1px 0 var(--glass-hi),0 16px 40px var(--shade);-webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);max-width:520px;margin:0 auto;font-weight:500;font-size:.92rem}
 .age{width:100%;accent-color:#FF7C4F;height:36px}
+.sheet:has(.badge-sheet){background:#0E0507;max-height:96vh;position:relative;overflow-x:hidden}
+.badge-sheet{position:relative;padding-bottom:8px}
+.badge-sheet::before{content:"";position:absolute;left:50%;top:40px;width:560px;height:560px;transform:translateX(-50%);pointer-events:none;opacity:.6;
+  background:radial-gradient(circle,var(--c1) 0%,var(--c2) 30%,transparent 62%);filter:blur(10px)}
+.badge-sheet>*{position:relative}
+.badge-sheet .card{background:rgba(255,255,255,.07);border-radius:26px;-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.badge-sheet .center{align-items:center;text-align:center}
+.badge-sheet .famc{color:var(--c1)}
+.badge-sheet .bname{font-size:2.1rem;font-weight:500;letter-spacing:-.02em}
+.badge-sheet .stage{display:grid;place-items:center;padding-block:6px;position:relative}
+.badge-sheet .stage .badge-art.got img{filter:drop-shadow(0 0 26px color-mix(in srgb,var(--c1) 50%,transparent))}
+.badge-sheet .stage .badge-art.locked img{filter:grayscale(1) brightness(.75);opacity:.55}
+.badge-sheet .stage .badge-art .icon{width:40%;height:40%}
+.badge-sheet .rays::before{content:"";position:absolute;width:340px;height:340px;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;
+  background:repeating-conic-gradient(color-mix(in srgb,var(--c1) 22%,transparent) 0 4deg,transparent 4deg 16deg);
+  -webkit-mask:radial-gradient(circle,#000 30%,transparent 68%);mask:radial-gradient(circle,#000 30%,transparent 68%)}
+.badge-sheet .lock{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;display:grid;place-items:center;background:rgba(14,5,7,.75);border:1px solid var(--edge);color:var(--ink)}
+.badge-sheet .myth{border-color:color-mix(in srgb,var(--c1) 40%,transparent);box-shadow:0 0 48px color-mix(in srgb,var(--c1) 25%,transparent)}
+.badge-sheet .myth.locked{border-color:var(--edge);box-shadow:none}
+.badge-sheet .myth .ph{display:block;height:10px;border-radius:6px;background:rgba(255,255,255,.12)}
+.badge-sheet .path{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.badge-sheet .path .cur img{filter:drop-shadow(0 0 14px color-mix(in srgb,var(--c1) 60%,transparent))}
+.bar.fam>i{background:linear-gradient(90deg,var(--c2),var(--c1));box-shadow:0 0 12px color-mix(in srgb,var(--c1) 45%,transparent)}
+.badge-sheet .iconbtn{width:48px;height:48px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -335,21 +360,29 @@ const AVOID = {
   sol:['pont_unilat','pont','hip_thrust_h','pompes','pompes_genoux','pompes_sur','pike','pike_genoux','pike_sur','rowing_inv','rowing_inv_sur','superman','superman_tirage','planche','planche_genoux','planche_touche','gainage_lat','gainage_lat_genoux','gainage_lat_jambe','dead_bug','dead_bug_jambes','crunch','crunch_inv','releve_jambes']
 };
 const BADGE_DIR = 'badges/';
+// Familles de badges : couleurs d'aura (1 au centre → 2), mesure de progression et unité.
+const BADGE_FAMILIES = {
+  seances:{n:'Séances', c1:'#FFD08E', c2:'#C98A4A', metric:t=>t.workouts, unit:'séances'},
+  flammes:{n:'Flammes', c1:'#FF7C4F', c2:'#9D1242', metric:t=>t.bestStreak, unit:'semaines d’affilée'}
+};
+// hidden : pas encore dessiné, masqué dans l'appli (à réactiver quand l'icône existe).
 const BADGES = [
-  {id:'premier-pas', n:'Premier pas', s:'Terminer ta première séance', ic:'bolt', rule:t=>t.workouts>=1},
-  {id:'lancee', n:'Lancée', s:'5 séances terminées', ic:'dumbbell', rule:t=>t.workouts>=5},
-  {id:'habitude', n:'Habitude', s:'10 séances terminées', ic:'dumbbell', rule:t=>t.workouts>=10},
-  {id:'pilier', n:'Pilier', s:'25 séances terminées', ic:'dumbbell', rule:t=>t.workouts>=25},
-  {id:'increvable', n:'Increvable', s:'50 séances terminées', ic:'medal', rule:t=>t.workouts>=50},
-  {id:'premier-record', n:'Premier record', s:'Battre un record personnel', ic:'trophy', rule:t=>t.prs>=1},
-  {id:'collection', n:'Collection', s:'10 records battus', ic:'trophy', rule:t=>t.prs>=10},
-  {id:'semaine-pleine', n:'Semaine pleine', s:'Atteindre ton objectif de la semaine', ic:'check', rule:t=>t.bestStreak>=1},
-  {id:'un-mois', n:'Un mois tenu', s:'4 semaines d’affilée à l’objectif', ic:'flame', rule:t=>t.bestStreak>=4},
-  {id:'trimestre', n:'Trimestre', s:'12 semaines d’affilée à l’objectif', ic:'flame', rule:t=>t.bestStreak>=12},
-  {id:'une-tonne', n:'Une tonne', s:'1 000 kg soulevés au total', ic:'scale', rule:t=>t.vol>=1000},
-  {id:'dix-tonnes', n:'Dix tonnes', s:'10 000 kg soulevés au total', ic:'scale', rule:t=>t.vol>=10000},
-  {id:'ca-bouge', n:'Ça bouge', s:'Ajouter une séance de cardio', ic:'run', rule:t=>t.cardio>=1},
-  {id:'dix-heures', n:'Dix heures', s:'10 heures d’entraînement cumulées', ic:'timer', rule:t=>t.time>=36000}
+  {id:'premier-pas', fam:'seances', n:'Premier pas', s:'Terminer ta première séance', seuil:1, ic:'bolt', rule:t=>t.workouts>=1, mythe:'Le fil d’Ariane', lore:'Ariane tendit à Thésée un fil pour entrer dans le labyrinthe et en ressortir. Ta première séance est ce fil : le chemin commence ici.'},
+  {id:'lancee', fam:'seances', n:'Lancée', s:'5 séances terminées', seuil:5, ic:'dumbbell', rule:t=>t.workouts>=5, mythe:'Pégase', lore:'Né de l’écume, Pégase se cabra et s’envola d’un seul élan. Cinq séances : tu as trouvé le tien.'},
+  {id:'habitude', fam:'seances', n:'Habitude', s:'10 séances terminées', seuil:10, ic:'dumbbell', rule:t=>t.workouts>=10, mythe:'Sisyphe', lore:'Chaque jour, Sisyphe remonte son rocher. « Il faut imaginer Sisyphe heureux » : dix séances, et la répétition devient ta force.'},
+  {id:'pilier', fam:'seances', n:'Pilier', s:'25 séances terminées', seuil:25, ic:'dumbbell', rule:t=>t.workouts>=25, mythe:'La Caryatide', lore:'Sur l’Acropole, six jeunes femmes de marbre portent le toit de l’Érechthéion depuis vingt-cinq siècles, sans jamais plier. Vingt-cinq séances : à ton tour de porter le temple.'},
+  {id:'increvable', fam:'seances', n:'Increvable', s:'50 séances terminées', seuil:50, ic:'medal', rule:t=>t.workouts>=50, mythe:'Héraclès et le lion de Némée', lore:'Aucune arme ne perçait la peau du lion de Némée : Héraclès l’affronta à mains nues et en fit son armure. Cinquante séances : te voilà increvable.'},
+  {id:'semaine-pleine', fam:'flammes', n:'Semaine pleine', s:'Atteindre ton objectif de la semaine', seuil:1, ic:'check', rule:t=>t.bestStreak>=1, mythe:'La flamme de Prométhée', lore:'Prométhée a volé le feu aux dieux de l’Olympe pour l’offrir aux hommes. Cette semaine, tu as allumé le tien : chaque séance prévue a été tenue.'},
+  {id:'un-mois', fam:'flammes', n:'Un mois tenu', s:'4 semaines d’affilée à l’objectif', seuil:4, ic:'flame', rule:t=>t.bestStreak>=4, mythe:'La lampadédromie', lore:'Dans la course aux flambeaux d’Athènes, on gagnait seulement si la torche arrivait allumée. Quatre semaines sans laisser tomber la flamme.'},
+  {id:'trimestre', fam:'flammes', n:'Trimestre', s:'12 semaines d’affilée à l’objectif', seuil:12, ic:'flame', rule:t=>t.bestStreak>=12, mythe:'La forge d’Héphaïstos', lore:'Dans sa forge, Héphaïstos frappait le métal jusqu’à en faire des armes de dieux. Douze semaines de feu : ton effort devient métal.'},
+  {id:'six-mois', fam:'flammes', n:'Six mois', s:'26 semaines d’affilée à l’objectif', seuil:26, ic:'flame', rule:t=>t.bestStreak>=26, mythe:'Le foyer d’Hestia', lore:'Au cœur de chaque cité brûlait le foyer d’Hestia, un feu sacré qu’on ne laissait jamais s’éteindre. Six mois : ta flamme est devenue éternelle.'},
+  {id:'une-annee', fam:'flammes', n:'Une année', s:'52 semaines d’affilée à l’objectif', seuil:52, ic:'flame', rule:t=>t.bestStreak>=52, mythe:'Le Phénix', lore:'Le Phénix renaît de ses cendres, plus fort à chaque fois. Une année entière : tu t’es façonnée, semaine après semaine.'},
+  {id:'premier-record', hidden:true, n:'Premier record', s:'Battre un record personnel', ic:'trophy', rule:t=>t.prs>=1},
+  {id:'collection', hidden:true, n:'Collection', s:'10 records battus', ic:'trophy', rule:t=>t.prs>=10},
+  {id:'une-tonne', hidden:true, n:'Une tonne', s:'1 000 kg soulevés au total', ic:'scale', rule:t=>t.vol>=1000},
+  {id:'dix-tonnes', hidden:true, n:'Dix tonnes', s:'10 000 kg soulevés au total', ic:'scale', rule:t=>t.vol>=10000},
+  {id:'ca-bouge', hidden:true, n:'Ça bouge', s:'Ajouter une séance de cardio', ic:'run', rule:t=>t.cardio>=1},
+  {id:'dix-heures', hidden:true, n:'Dix heures', s:'10 heures d’entraînement cumulées', ic:'timer', rule:t=>t.time>=36000}
 ];
 const MUSCLES = ['Quadriceps','Fessiers','Ischios','Pectoraux','Dos','Épaules','Biceps','Triceps','Mollets','Abdos','Bas du dos','Avant-bras'];
 
@@ -690,6 +723,8 @@ const I = {
   medal:'<circle cx="12" cy="15" r="6"/><path d="M8 3l4 6 4-6M12 13v4"/>',
   scale:'<path d="M5 20h14a1 1 0 0 0 1-1L18 5H6L4 19a1 1 0 0 0 1 1z"/><path d="M9 10a3 3 0 0 1 6 0"/>',
   leaf:'<path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19l7-7"/>',
+  share:'<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'
 };
 const ic = (n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
@@ -709,7 +744,7 @@ const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
    propre copie hors ligne et renvoie les écritures dès que le réseau revient.
    ===================================================================== */
 // Numéro de version de cette page : le changer à chaque envoi sur GitHub pour que les appareils proposent la mise à jour.
-const APP_VERSION = '2026-10-12-2';
+const APP_VERSION = '2026-10-12-3';
 const FIREBASE_VERSION = '10.12.2';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
@@ -879,14 +914,27 @@ function bestStreakEver(){
   while(+m<=end){ if(weekCount(ws,m)>=goal){ cur++; best=Math.max(best,cur); } else cur=0; m=new Date(+m+7*DAY); }
   return best;
 }
-function badgeState(){ const t=totals(); t.bestStreak=bestStreakEver(); t.cardio=cardios().length; return BADGES.map(b=>({...b, got:b.rule(t)})); }
+function badgeStats(){ const t=totals(); t.bestStreak=bestStreakEver(); t.cardio=cardios().length; return t; }
+function badgeState(){ const t=badgeStats(); return BADGES.filter(b=>!b.hidden).map(b=>({...b, got:b.rule(t)})); }
+// Date d'obtention, recalculée depuis les séances (juste aussi pour les badges déjà gagnés).
+function badgeDate(b){
+  const ws=workouts(); if(!ws.length) return null;
+  if(b.fam==='seances') return ws[b.seuil-1] ? ws[b.seuil-1].date : null;
+  const goal=S.profile.days, end=+mondayOf(now()); let m=mondayOf(ws[0].date), cur=0;
+  while(+m<=end){
+    const wk=ws.filter(x=>{ const t=+new Date(x.date); return t>=+m && t<+m+7*DAY; });
+    if(wk.length>=goal){ cur++; if(cur>=b.seuil) return wk[goal-1].date; } else cur=0;
+    m=new Date(+m+7*DAY);
+  }
+  return null;
+}
 function gotBadges(){ return badgeState().filter(b=>b.got).map(b=>b.id); }
 // Icône d'un badge : le fichier s'il existe, sinon l'icône provisoire en dessous.
-function badgeArt(b){ return `<span class="badge-art ${b.got?'got':''}">${ic(b.ic)}<img src="${BADGE_DIR}${b.id}.svg" alt="" loading="lazy" onerror="this.remove()"></span>`; }
+function badgeArt(b,size,cls){ return `<span class="badge-art ${b.got?'got':'locked'} ${cls||''}" style="${size?`width:${size}px;height:${size}px`:''}">${ic(b.ic)}<img src="${BADGE_DIR}${b.id}.svg" alt="Badge ${esc(b.n)}, ${b.got?'obtenu':'pas encore obtenu'}" onerror="this.remove()"></span>`; }
 // Annonce un nouveau badge, sinon un passage de niveau, sinon le message prévu.
 function announce(beforeLvl,beforeBadges,fallback){
   const nb=badgeState().filter(b=>b.got && !beforeBadges.includes(b.id)), lvl=levelInfo(totalXp()).lvl;
-  if(nb.length){ ui.sheet={type:'badge', id:nb[0].id}; renderLayer(); if(lvl>beforeLvl) toast('Niveau '+lvl+' atteint !'); return; }   // la fenêtre du badge suffit
+  if(nb.length){ ui.sheet={type:'badge', id:nb[0].id, isNew:true}; renderLayer(); if(lvl>beforeLvl) toast('Niveau '+lvl+' atteint !'); return; }   // la fenêtre du badge suffit
   toast(lvl>beforeLvl?'Niveau '+lvl+' atteint !':fallback);
 }
 // Courbe d'un exercice : meilleure charge, répétitions ou secondes par séance.
@@ -1043,7 +1091,7 @@ function renderProfile(){
     </section>
     ${(()=>{const b=badgeState(), got=b.filter(x=>x.got).length;
       return `<div class="section-title"><h2>Badges</h2><span class="muted">${got} / ${b.length}</span></div>
-      <div class="badges">${b.map(x=>`<button class="badge ${x.got?'':'off'}" data-a="badgesheet" data-v="${x.id}">${badgeArt(x)}<span class="t">${esc(x.n)}</span></button>`).join('')}</div>`})()}
+      <div class="badges">${b.map(x=>`<button class="badge ${x.got?'':'off'}" data-a="badgesheet" data-v="${x.id}" aria-label="${esc(x.n)}, ${x.got?'obtenu':'pas encore obtenu'}">${badgeArt(x)}<span class="t">${esc(x.n)}</span></button>`).join('')}</div>`})()}
     <section class="card stack-s">
       <span class="eyebrow">Mes réglages</span>
       <div class="list">${rows.map(([k,v])=>`<div class="item"><span class="s" style="flex:0 0 92px">${k}</span><span class="grow t">${esc(v)}</span></div>`).join('')}</div>
@@ -1386,13 +1434,36 @@ function renderSheet(){
     </div>`;
   }
   if(sh.type==='badge'){
-    const b=badgeState().find(x=>x.id===sh.id); if(!b) return '';
-    return `<div class="stack" style="align-items:center;text-align:center;padding-block:8px 4px">
-      <div class="badge-hero ${b.got?'':'off'}">${badgeArt(b)}</div>
-      <span class="eyebrow">${b.got?'Badge obtenu':'À débloquer'}</span>
-      <h2>${esc(b.n)}</h2><p class="muted">${esc(b.s)}</p>
-      <button class="btn primary big" data-a="closesheet" style="max-width:320px">${b.got?'Bravo !':'Compris'}</button>
-    </div>`;
+    const all=badgeState(), b=all.find(x=>x.id===sh.id); if(!b) return '';
+    const F=BADGE_FAMILIES[b.fam], fam=all.filter(x=>x.fam===b.fam), got=fam.filter(x=>x.got).length;
+    const val=F.metric(badgeStats()), next=fam.find(x=>!x.got), d=b.got&&badgeDate(b);
+    const dtxt=d?new Date(d).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'';
+    const bar=(v,max)=>`<div class="bar fam"><i style="width:${Math.min(100,Math.round(v/max*100))}%"></i></div>`;
+    const myth=b.got
+      ?`<section class="card myth stack-s"><span class="eyebrow">Le mythe</span><p>${esc(b.lore)}</p>${sh.isNew?`<div class="row wrap" style="gap:8px"><span class="chip">${ic('check')} ${esc(b.s)}</span>${dtxt?`<span class="chip">${dtxt}</span>`:''}</div>`:''}</section>`
+      :`<section class="card myth locked stack-s"><span class="eyebrow">Le mythe</span><i class="ph"></i><i class="ph"></i><i class="ph" style="width:60%"></i><p class="muted" style="font-size:.9rem">L’histoire de ce badge se révèle le jour où tu l’obtiens.</p></section>`;
+    const top=`<div class="row between"><button class="iconbtn" data-a="closesheet" aria-label="Retour">${ic('back')}</button><span class="eyebrow">${F.n}</span>${b.got?`<button class="iconbtn" data-a="sharebadge" data-v="${b.id}" aria-label="Partager le badge">${ic('share')}</button>`:'<span style="width:48px"></span>'}</div>`;
+    let body;
+    if(sh.isNew) body=`<div class="row" style="justify-content:flex-end"><button class="iconbtn" data-a="closesheet" aria-label="Fermer">${ic('x')}</button></div>
+      <div class="center stack-s"><span class="eyebrow famc">Nouveau badge</span><h2>Félicitations, ${esc((S.profile.name||'').split(' ')[0])} !</h2><p class="muted">Tu as obtenu le badge</p></div>
+      <div class="stage rays">${badgeArt(b,210)}</div>
+      <div class="center stack-s"><h1 class="bname">${esc(b.n)}</h1><p class="famc">${esc(b.mythe)}</p></div>
+      ${myth}
+      <button class="btn primary big" data-a="closesheet">Continuer</button>
+      <button class="btn ghost big" data-a="sharebadge" data-v="${b.id}">${ic('share')} Partager</button>`;
+    else if(b.got) body=`${top}
+      <div class="stage">${badgeArt(b,190)}</div>
+      <div class="center stack-s"><h1 class="bname">${esc(b.n)}</h1><p class="famc">${esc(b.mythe)}</p><span class="chip">${dtxt?'Obtenu le '+dtxt+' · ':''}${esc(b.s)}</span></div>
+      ${myth}
+      <section class="card stack-s"><div class="row between"><span class="eyebrow">Ton chemin</span><b>${got} / ${fam.length}</b></div>
+        <div class="path">${fam.map(x=>badgeArt(x,x.id===b.id?60:44,x.id===b.id?'cur':'')).join('')}</div>
+        ${next?`<p class="muted" style="font-size:.9rem">Prochain : <b style="color:var(--ink)">${esc(next.n)}</b> · ${Math.min(val,next.seuil)} / ${next.seuil} ${F.unit}</p>${bar(val,next.seuil)}`:'<p class="muted" style="font-size:.9rem">Tu as toute la famille, bravo !</p>'}</section>`;
+    else body=`${top}
+      <div class="stage">${badgeArt(b,190)}<span class="lock">${ic('lock')}</span></div>
+      <div class="center stack-s"><h1 class="bname">${esc(b.n)}</h1><p class="muted">Un mythe t’attend…</p></div>
+      <section class="card stack-s"><span class="eyebrow">Pour l’obtenir</span><p>${esc(b.s)}</p><p class="muted" style="font-size:.9rem">${Math.min(val,b.seuil)} / ${b.seuil} ${F.unit}</p>${bar(val,b.seuil)}</section>
+      ${myth}`;
+    return `<div class="badge-sheet stack" style="--c1:${F.c1};--c2:${F.c2}">${body}</div>`;
   }
   if(sh.type==='sess'){
     const s=S.sessions.find(x=>x.id===sh.v); if(!s) return '<p>Séance introuvable.</p>';
@@ -1496,6 +1567,13 @@ const A = {
     ui.sheet=null; render(); announce(before,beforeB,a.type+' ajouté : '+min+' min.');
   },
   exsheet(d){ ui.sheet={type:'ex', v:d.v}; renderLayer(); },
+  sharebadge(d){
+    const b=badgeState().find(x=>x.id===d.v); if(!b) return;
+    const text='J’ai obtenu le badge « '+b.n+' » ('+b.mythe+') sur Askesia !';
+    if(navigator.share) navigator.share({title:'Askesia', text, url:location.origin+location.pathname}).catch(()=>{});
+    else if(navigator.clipboard) navigator.clipboard.writeText(text).then(()=>toast('Texte copié, prêt à partager.'),()=>toast(text));
+    else toast(text);
+  },
   badgesheet(d){ ui.sheet={type:'badge', id:d.v}; renderLayer(); },
   sessheet(d){ ui.sheet={type:'sess', v:d.v}; renderLayer(); },
   sessconfirm(){ ui.sheet.confirm=true; renderLayer(); },
