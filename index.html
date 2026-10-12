@@ -234,6 +234,8 @@ tr.warm.done .check{background:var(--good);color:var(--on-good);border-color:tra
 .off .badge-art img{filter:grayscale(1) brightness(.8)}
 .badge-hero .badge-art{width:120px;height:120px}
 .badge-hero .badge-art .icon{width:52px;height:52px}
+.update{position:fixed;left:16px;right:16px;top:calc(12px + env(safe-area-inset-top,0px));z-index:70;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 8px 8px 18px;border-radius:999px;background:var(--bar-glass);border:1px solid var(--edge);box-shadow:inset 0 1px 0 var(--glass-hi),0 16px 40px var(--shade);-webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);max-width:520px;margin:0 auto;font-weight:500;font-size:.92rem}
+.age{width:100%;accent-color:#FF7C4F;height:36px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -264,6 +266,9 @@ const GOALS = {
   force:{n:'Gagner en force', s:'Charges lourdes, 5 à 8 répétitions', main:[5,8], iso:[8,12], restMain:150, restIso:90}
 };
 // Niveau → séries par exercice et secondes de gainage.
+// Âge par tranches de 10 ans (valeur = début de la tranche). À partir de 50 ans : exercices plus faciles.
+const AGE_EASY = 50;
+const ageLabel = a => a<20 ? 'Moins de 20 ans' : a>=70 ? '70 ans et +' : a+' à '+(a+9)+' ans';
 const LEVELS = {
   debutant:{n:'Débutant', s:'Je n’ai jamais vraiment fait de muscu', sets:2, core:20, bw:8, col:0},
   reprise:{n:'Je reprends', s:'J’en ai fait avant, j’ai arrêté un moment', sets:3, core:30, bw:10, col:0},
@@ -297,6 +302,7 @@ const LOWER_FAMILIES = ['squat','hinge','lunge','glutes','calves'];
 // Échauffement : mobilité selon la séance.
 const WARMUP = {
   cardio:'2 min de cardio léger : jumping jacks, marche rapide ou vélo.',
+  cardioSenior:'2 min sur place, une chaise à côté pour l’équilibre : marche en balançant les bras, montées de genoux ou talon-fesse.',
   mobility:{upper:'1 min de rotations d’épaules, bras tendus puis pliés.', lower:'1 min de squats lents et de balanciers de jambes.', full:'1 min : rotations d’épaules puis squats lents et balanciers de jambes.'},
   approach:[{pct:.5, reps:10},{pct:.75, reps:5}]
 };
@@ -431,7 +437,21 @@ const EX = [
   {id:'gainage_lat_genoux', n:'Gainage latéral genoux', eq:['corps'], k:'I', t:'time', side:true, m:'Obliques', mus:['Abdos'], hard:'gainage_lat', cue:'Sur un avant-bras et les genoux, corps de profil aligné. Fais le temps de chaque côté.'},
   {id:'gainage_lat_jambe', n:'Gainage latéral jambe levée', eq:['corps'], k:'I', t:'time', side:true, m:'Obliques · fessiers', mus:['Abdos','Fessiers'], easy:'gainage_lat', cue:'En gainage latéral, lève la jambe du dessus et tiens. Fais le temps de chaque côté.'},
   {id:'dead_bug_jambes', n:'Dead bug jambes seules', eq:['corps'], k:'I', m:'Abdos profonds', mus:['Abdos'], hard:'dead_bug', cue:'Sur le dos, genoux en l’air. Descends une jambe à la fois vers le sol sans décoller le bas du dos.'},
-  {id:'releve_jambes', n:'Relevé de jambes', eq:['corps'], k:'I', m:'Bas des abdos', mus:['Abdos'], easy:'crunch_inv', cue:'Sur le dos, jambes tendues. Monte-les à la verticale puis redescends lentement sans toucher le sol.'}
+  {id:'releve_jambes', n:'Relevé de jambes', eq:['corps'], k:'I', m:'Bas des abdos', mus:['Abdos'], easy:'crunch_inv', cue:'Sur le dos, jambes tendues. Monte-les à la verticale puis redescends lentement sans toucher le sol.'},
+  // Programme doux 50 ans et + (inspiré du « Programme semaine sénior ») : chaise et balai, rien au sol.
+  {id:'assis_debout', n:'Assis-debout avec un balai', f:'squat', senior:true, eq:['corps'], k:'P', reps:10, m:'Cuisses · fessiers', mus:['Quadriceps','Fessiers'], hard:'squat_chaise', cue:'Assise au bord d’une chaise, dos droit, balai tenu à l’horizontale devant la poitrine. Lève-toi, puis rassieds-toi en freinant la descente. Expire en te levant.'},
+  {id:'extension_jambe', n:'Extension de jambe assise', f:'lunge', senior:true, eq:['corps'], k:'I', side:true, reps:8, m:'Cuisses', mus:['Quadriceps'], hard:'montee_marche', cue:'Assise au bord de la chaise, dos droit. Tends une jambe devant toi, garde-la le temps d’une expiration en rentrant le ventre, puis repose-la.'},
+  {id:'battement_lateral', n:'Battements de jambe sur le côté', f:'glutes', senior:true, eq:['corps'], k:'I', side:true, reps:10, m:'Fessiers (moyen fessier)', mus:['Fessiers'], hard:'kickback_debout', cue:'Debout, mains posées légèrement sur une chaise devant toi. Monte la jambe sur le côté, pointe du pied vers le sol, sans monter trop haut ni cambrer.'},
+  {id:'poussee_balai', n:'Poussée avec un balai', f:'push_h', senior:true, eq:['corps'], k:'I', reps:10, m:'Pectoraux · bras', mus:['Pectoraux','Triceps'], hard:'pompes_mur', cue:'Assise, dos droit, balai à l’horizontale, bras tendus à hauteur des épaules. Ramène le balai vers la poitrine puis pousse-le devant toi. Expire en poussant.'},
+  {id:'developpe_balai', n:'Développé au-dessus de la tête avec un balai', f:'push_v', senior:true, eq:['corps'], k:'I', reps:10, m:'Épaules', mus:['Épaules','Triceps'], cue:'Assise, dos droit, balai tenu un peu plus large que les épaules, à hauteur du menton. Tends les bras au-dessus de la tête sans verrouiller, puis redescends au menton.'},
+  {id:'baton_devant', n:'Bâton appuyé devant', f:'pull_h', senior:true, eq:['corps'], k:'I', side:true, reps:10, m:'Dos (grand dorsal) · épaules', mus:['Dos','Épaules'], hard:'rowing_serviette', cue:'Debout, balai dans une main, bras tendu devant toi. Appuie le balai vers le sol le temps d’une longue expiration, épaules basses, en te grandissant.'},
+  {id:'baton_cote', n:'Bâton appuyé sur le côté', f:'pull_v', senior:true, eq:['corps'], k:'I', side:true, reps:10, m:'Dos (grand dorsal)', mus:['Dos'], hard:'anges_mur', cue:'Debout, balai dans une main, bras tendu sur le côté. Appuie le balai vers le sol le temps d’une longue expiration, épaules basses, sans cambrer.'},
+  {id:'elevation_balai', n:'Montée des bras avec un balai', f:'lateral', senior:true, eq:['corps'], k:'I', reps:10, m:'Haut du dos · épaules', mus:['Dos','Épaules'], cue:'Assise, dos droit, balai à l’horizontale, bras tendus à hauteur des genoux. Monte les bras vers les oreilles, autant que possible, puis redescends en contrôlant.'},
+  {id:'equilibre_pied', n:'Équilibre sur un pied', f:'core', senior:true, eq:['corps'], k:'I', t:'time', side:true, m:'Équilibre · gainage', mus:['Abdos'], hard:'planche_mur', cue:'Debout, une main posée légèrement sur une chaise à côté de toi. Tiens sur un pied, ventre serré, regard fixe, puis change de côté.'},
+  {id:'coordination_assise', n:'Genou et bras opposé, assise', f:'core', senior:true, eq:['corps'], k:'I', t:'time', side:true, m:'Abdos · coordination', mus:['Abdos'], hard:'crunch_debout', cue:'Assise au bord de la chaise. Décolle un pied en montant légèrement le genou et tends le bras opposé vers l’oreille, le temps d’une expiration. Change de côté.'},
+  {id:'transverse_assis', n:'Respirations ventre rentré', f:'abs', senior:true, eq:['corps'], k:'I', reps:10, m:'Abdos profonds (transverse)', mus:['Abdos'], hard:'crunch_debout', cue:'Assise, dos droit, pieds bien posés. Inspire, puis en expirant rentre le nombril comme pour fermer un pantalon un peu serré. Une répétition = une respiration.'},
+  {id:'torsion_balai', n:'Torsions avec un balai', f:'abs', senior:true, eq:['corps'], k:'I', reps:10, m:'Obliques', mus:['Abdos'], cue:'Assise, dos droit, balai à l’horizontale devant la poitrine. Tourne le buste à droite puis à gauche, en gardant les épaules alignées avec les mains. Expire pendant la torsion.'},
+  {id:'demi_pointes', n:'Demi-pointes, appui sur une chaise', f:'calves', senior:true, eq:['corps'], k:'I', reps:10, m:'Mollets · chevilles', mus:['Mollets'], hard:'mollets', cue:'Debout, mains posées légèrement sur une chaise devant toi. Monte sur la pointe des pieds puis redescends en contrôlant.'},
 ];
 EX.forEach(e=>{ e.avoid=Object.keys(AVOID).filter(z=>AVOID[z].includes(e.id)); });
 const EXM = Object.fromEntries(EX.map(e=>[e.id,e]));
@@ -446,6 +466,8 @@ const round2 = v=>Math.round(v*100)/100;
 const work = sets=>(sets||[]).filter(s=>!s.warm);
 const isMain = ex=>ex.k==='P';
 const isWeighted = ex=>ex.start!=null;
+// Débutant ou 50 ans et plus : variantes plus faciles et charges de départ à 75 %.
+const startsEasy = p=>p.level==='debutant' || p.age>=AGE_EASY;
 function mondayOf(d){ d=new Date(d); d.setHours(0,0,0,0); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d; }
 
 // Matériel : « Salle » donne accès à tout le reste ; le poids du corps est toujours là.
@@ -469,6 +491,7 @@ function nextIndex(p,ws){
 // Objectif → répétitions et repos ; un débutant reste à 8–12 sur les principaux pendant 4 semaines.
 function repRange(ex,p,now){
   if(ex.t) return null;
+  if(ex.reps) return [ex.reps,ex.reps];   // exercices doux : nombre fixe, comme dans le programme sénior
   const g=GOALS[p.goal];
   if(isMain(ex) && p.level==='debutant' && now-new Date(p.createdAt||now)<28*DAY) return [8,12];
   return isMain(ex) ? g.main : g.iso;
@@ -485,9 +508,11 @@ function setsFor(p,pos,deload){
 function slotExercise(key,i,p,used){
   const fam=TPL[key].slots[i], chosen=p.swaps && p.swaps[key+':'+i];
   if(chosen && EXM[chosen] && available(EXM[chosen],p) && !used.has(chosen)) return EXM[chosen];
-  const ex=EX.find(e=>e.f===fam && available(e,p) && !used.has(e.id)) || null;
+  // 50 ans et + : seulement le programme doux ; une famille sans exercice doux est sautée.
+  if(p.age>=AGE_EASY) return EX.find(e=>e.f===fam && e.senior && available(e,p) && !used.has(e.id)) || null;
+  const ex=EX.find(e=>e.f===fam && !e.senior && available(e,p) && !used.has(e.id)) || null;
   // Débutant au poids du corps : on commence par la variante plus facile quand elle existe.
-  if(ex && p.level==='debutant' && ex.eq.includes('corps') && !ex.t){ const e2=ex.easy && EXM[ex.easy]; if(e2 && available(e2,p) && !used.has(e2.id)) return e2; }
+  if(ex && startsEasy(p) && ex.eq.includes('corps') && !ex.t){ const e2=ex.easy && EXM[ex.easy]; if(e2 && available(e2,p) && !used.has(e2.id)) return e2; }
   return ex;
 }
 // Séance type → liste d'exercices. La durée fixe le nombre ; un emplacement sans exercice est sauté.
@@ -546,7 +571,7 @@ function suggest(item,p,ws,ctx){
   } else if(isWeighted(ex)){
     const inc=incOf(ex,p), lo=item.range[0], hi=item.range[1], per=ex.ph?' par haltère':'';
     if(!last){
-      const kg=p.level==='debutant' ? roundTo(ex.start*0.75,inc) : ex.start;
+      const kg=startsEasy(p) ? roundTo(ex.start*0.75,inc) : ex.start;
       r={kg, reps:lo, note:'Première fois : '+fmt(kg)+' kg'+per+' est une suggestion. Prends une charge qui te laisse 2 répétitions en réserve.'};
     } else {
       const kg=Math.max(...last.sets.map(s=>+s.kg||0)), atKg=last.sets.filter(s=>+s.kg===kg);
@@ -683,6 +708,8 @@ const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
    users/{uid}/state/draft (séance en cours). Firestore garde aussi sa
    propre copie hors ligne et renvoie les écritures dès que le réseau revient.
    ===================================================================== */
+// Numéro de version de cette page : le changer à chaque envoi sur GitHub pour que les appareils proposent la mise à jour.
+const APP_VERSION = '2026-10-12-2';
 const FIREBASE_VERSION = '10.12.2';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
@@ -1004,7 +1031,7 @@ function renderStats(){
 
 function renderProfile(){
   const p=S.profile, xp=totalXp(), lv=levelInfo(xp);
-  const rows=[['Objectif',GOALS[p.goal].n],['Fréquence',p.days+' séance'+(p.days>1?'s':'')+' par semaine'],['Durée',p.duration+' min par séance'],['Niveau',LEVELS[p.level].n],['Matériel',(p.equipment||[]).map(e=>(EQUIP.find(x=>x.id===e)||{n:e}).n).join(', ')||'Poids du corps'],['À ménager',(p.avoid||[]).map(z=>(ZONES.find(x=>x.id===z)||{n:z}).n).join(', ')||'Rien'],['Cardio',p.cardio?p.cardio+' fois par semaine':'Non']];
+  const rows=[['Objectif',GOALS[p.goal].n],['Fréquence',p.days+' séance'+(p.days>1?'s':'')+' par semaine'],['Durée',p.duration+' min par séance'],['Niveau',LEVELS[p.level].n],['Âge',p.age?ageLabel(p.age):'Non renseigné'],['Matériel',(p.equipment||[]).map(e=>(EQUIP.find(x=>x.id===e)||{n:e}).n).join(', ')||'Poids du corps'],['À ménager',(p.avoid||[]).map(z=>(ZONES.find(x=>x.id===z)||{n:z}).n).join(', ')||'Rien'],['Cardio',p.cardio?p.cardio+' fois par semaine':'Non']];
   return `<div class="stack">
     <header class="row" style="gap:16px">
       <span style="width:76px;height:76px;border-radius:50%;display:grid;place-items:center;background:var(--grad);color:#fff;font-weight:500;font-size:2rem;flex:none">${esc((p.name||'?').trim().charAt(0).toUpperCase())}</span>
@@ -1083,6 +1110,8 @@ function renderOnboarding(){
       <div class="choices">${EQUIP.filter(e=>e.id!=='corps').map(e=>choice('equipment',e.id,e.n,e.s,true)).join('')}</div></div>`+nav(true,(d.equipment||[]).length?'Continuer':'Continuer sans matériel');
   else if(st===4) body=`<div class="stack">${steps}<h1>Ton niveau aujourd’hui</h1>
       <div class="choices">${Object.entries(LEVELS).map(([k,l])=>choice('level',k,l.n,l.s)).join('')}</div>
+      <div class="field" style="margin-top:8px"><label for="ob-age">Ton âge : <b id="ob-age-l">${ageLabel(d.age||30)}</b></label><input id="ob-age" class="age" type="range" min="10" max="70" step="10" value="${d.age||30}"></div>
+      ${(d.age||30)>=AGE_EASY?`<p class="hint accent">${ic('info')}<span>Programme doux : tout se fait assise ou debout avec une chaise, et un balai. Le bouton « Trop facile » permet de monter d’un cran.</span></p>`:''}
       ${d.level&&d.days?`<p class="hint accent">${ic('info')}<span>${programHint(d.days,d.level)}</span></p>`:''}</div>`+nav(d.level);
   else if(st===5) body=`<div class="stack">${steps}<h1>Des zones à ménager&nbsp;?</h1>
       <p class="muted">Coche ce qui te gêne : on écarte les exercices qui sollicitent cette zone. Tu peux ne rien cocher.</p>
@@ -1109,7 +1138,7 @@ function renderWarmup(){
   return `<main class="app full"><div class="stack">
     <div class="wk-top"><button class="iconbtn" data-a="sheet" data-v="quit" aria-label="Quitter la séance">${ic('x')}</button><span class="eyebrow grow">${esc(w.title)}</span></div>
     <div class="stack-s"><span class="eyebrow">Avant de commencer</span><h1 class="ex-name">Échauffement · 5 min</h1><p class="muted">Il prépare tes articulations et ne compte pas dans la durée de la séance.</p></div>
-    <section class="card stack-s"><div class="row between"><b>1. Cardio léger</b><span class="muted">2 min</span></div><p class="muted">${WARMUP.cardio}</p><button class="btn ghost small" style="align-self:flex-start" data-a="warmtimer" data-v="120">${ic('timer')} Lancer 2:00</button></section>
+    <section class="card stack-s"><div class="row between"><b>1. Cardio léger</b><span class="muted">2 min</span></div><p class="muted">${S.profile.age>=AGE_EASY?WARMUP.cardioSenior:WARMUP.cardio}</p><button class="btn ghost small" style="align-self:flex-start" data-a="warmtimer" data-v="120">${ic('timer')} Lancer 2:00</button></section>
     <section class="card stack-s"><div class="row between"><b>2. Mobilité</b><span class="muted">1 min</span></div><p class="muted">${WARMUP.mobility[region]}</p><button class="btn ghost small" style="align-self:flex-start" data-a="warmtimer" data-v="60">${ic('timer')} Lancer 1:00</button></section>
     ${first?`<section class="card stack-s"><div class="row between"><b>3. Séries d’approche</b><span class="muted">2 min</span></div><p class="muted">Sur ${esc(EXM[first.exId].n)} : ${first.warm.map(s=>s.reps+' reps à '+fmt(s.kg)+' kg').join(', puis ')}. Elles apparaissent en haut de l’exercice et ne comptent pas dans tes statistiques.</p></section>`:''}
     <button class="link" style="align-self:center" data-a="warmdone">Passer l’échauffement</button>
@@ -1315,6 +1344,7 @@ function renderLayer(){
     </div></div>`;
   }
   if(ui.sheet) h+=`<div class="scrim" data-a="closesheet"><div class="sheet" role="dialog" aria-modal="true" data-stop="1"><div class="grab"></div>${renderSheet()}</div></div>`;
+  if(ui.update && ui.screen!=='workout') h+=`<div class="update" role="status"><span>Nouvelle version disponible</span><button class="btn primary small" data-a="reloadapp">Mettre à jour</button></div>`;
   if(ui.toast) h+=`<div class="toast" role="status">${esc(ui.toast)}</div>`;
   L.innerHTML=h;
   if(draft && draft.rest && ui.screen==='workout' && !restTimer) tickRest();
@@ -1382,6 +1412,7 @@ function renderSheet(){
       <div class="field"><label>Séances par semaine</label>${seg('days',[1,2,3,4,5,6])}</div>
       ${few?`<p class="hint gold">${ic('info')}<span>6 jours, c’est beaucoup pour récupérer quand on débute ou qu’on reprend. Choisis 4 ou 5 jours.</span></p>`:''}
       <div class="field"><label>Durée</label>${seg('duration',[20,30,45,60],' min')}</div>
+      <div class="field"><label for="set-age">Âge : <b id="set-age-l">${ageLabel(d.age||30)}</b></label><input id="set-age" class="age" type="range" min="10" max="70" step="10" value="${d.age||30}"></div>
       <div class="field"><label>Niveau</label><div class="row wrap" style="gap:8px">${Object.entries(LEVELS).map(([k,l])=>`<button class="chip ${d.level===k?'accent':''}" style="padding:8px 14px;font-size:.95rem" data-a="setpick" data-k="level" data-v="${k}">${l.n}</button>`).join('')}</div></div>
       <div class="field"><label>Matériel</label><div class="row wrap" style="gap:8px">${EQUIP.filter(e=>e.id!=='corps').map(e=>`<button class="chip ${(d.equipment||[]).includes(e.id)?'accent':''}" style="padding:8px 14px;font-size:.95rem" data-a="setequip" data-v="${e.id}">${e.n}</button>`).join('')}</div></div>
       <div class="field"><label>Zones à ménager</label><div class="row wrap" style="gap:8px">${ZONES.map(z=>`<button class="chip ${(d.avoid||[]).includes(z.id)?'accent':''}" style="padding:8px 14px;font-size:.95rem" data-a="setavoid" data-v="${z.id}">${z.n}</button>`).join('')}</div></div>
@@ -1414,7 +1445,7 @@ const A = {
     const last = o.step===7 || (o.step===6 && !needsFewerDays(d.days,d.level));
     if(o.step===5 && d.cardio==null && d.goal==='perte') d.cardio=2;   // conseil par défaut pour perdre du poids
     if(!last){ o.step++; window.scrollTo(0,0); render(); return; }
-    Store.saveProfile({id:uid(), name:d.name, goal:d.goal, days:d.days, duration:d.duration, level:d.level, equipment:d.equipment||[], avoid:d.avoid||[], cardio:d.cardio||0, swaps:{}, bodyweights:[], createdAt:new Date().toISOString()});
+    Store.saveProfile({id:uid(), name:d.name, goal:d.goal, days:d.days, duration:d.duration, level:d.level, age:d.age||30, equipment:d.equipment||[], avoid:d.avoid||[], cardio:d.cardio||0, swaps:{}, bodyweights:[], createdAt:new Date().toISOString()});
     ui.tab='home'; render(); toast('Ton programme est prêt.');
   },
   obback(){ if(ui.ob.step>0){ const n=$('#ob-name'); if(n) ui.ob.data.name=n.value.trim(); ui.ob.step--; render(); } },
@@ -1473,7 +1504,8 @@ const A = {
   setpick(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; ui.sheet.data[d.k]=isNaN(+d.v)?d.v:+d.v; renderLayer(); },
   setequip(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; const a=new Set(ui.sheet.data.equipment||[]); a.has(d.v)?a.delete(d.v):a.add(d.v); ui.sheet.data.equipment=[...a]; renderLayer(); },
   setavoid(d){ const n=$('#set-name'); if(n) ui.sheet.data.name=n.value; const a=new Set(ui.sheet.data.avoid||[]); a.has(d.v)?a.delete(d.v):a.add(d.v); ui.sheet.data.avoid=[...a]; renderLayer(); },
-  setsave(){ const d=ui.sheet.data, n=$('#set-name'); if(needsFewerDays(d.days,d.level)) return; d.name=(n&&n.value.trim())||S.profile.name; Store.saveProfile(d); ui.sheet=null; render(); toast('Réglages enregistrés. Ton programme est à jour.'); },
+  setsave(){ const ag=$('#set-age'); if(ag) ui.sheet.data.age=+ag.value; const d=ui.sheet.data, n=$('#set-name'); if(needsFewerDays(d.days,d.level)) return; d.name=(n&&n.value.trim())||S.profile.name; Store.saveProfile(d); ui.sheet=null; render(); toast('Réglages enregistrés. Ton programme est à jour.'); },
+  reloadapp(){ location.replace(location.pathname+'?v='+Date.now()); },
   signin(){ Store.signIn(); },
   signout(){ Store.signOut(); },
   guest(){ Store.continueAsGuest(); },
@@ -1487,7 +1519,24 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',e=>{ if(e.target.matches('[data-in]')){ readInputs(); saveDraft(); } });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && ui.sheet){ ui.sheet=null; renderLayer(); } if(e.key==='Enter' && e.target.id==='ob-name'){ A.obnext(); } });
+document.addEventListener('input',e=>{
+  if(e.target.id==='ob-age'){ ui.ob.data.age=+e.target.value; $('#ob-age-l').textContent=ageLabel(ui.ob.data.age); }
+  if(e.target.id==='set-age'){ ui.sheet.data.age=+e.target.value; $('#set-age-l').textContent=ageLabel(ui.sheet.data.age); }
+});
+document.addEventListener('change',e=>{ if(e.target.id==='ob-age') render(); });
 document.addEventListener('input',e=>{ if(e.target.id==='ob-name'){ ui.ob.data.name=e.target.value; const b=document.querySelector('[data-a="obnext"]'); if(b) b.disabled=!(ui.ob.data.goal&&e.target.value.trim()); } });
+// Mise à jour : on regarde si une version plus récente est en ligne au retour sur l'appli, puis toutes les 10 minutes.
+async function checkUpdate(){
+  if(ui.update || !navigator.onLine) return;
+  try{
+    const t=await (await fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'})).text();
+    const m=t.match(/const APP_VERSION = '([^']+)'/);
+    if(m && m[1]!==APP_VERSION){ ui.update=true; renderLayer(); }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkUpdate(); });
+setInterval(checkUpdate,10*60*1000);
+setTimeout(checkUpdate,4000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ if(ui.screen==='workout'&&draft){ wakeLock(true); if(draft.rest) tickRest(); } } else { wl=null; } });
 
 // Accès aux règles pour les tests automatiques (aucun effet sur l'appli).
