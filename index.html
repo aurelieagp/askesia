@@ -377,6 +377,8 @@ tr.warm.done .check{background:var(--good);color:var(--on-good);border-color:tra
 .ob-sil .g,.ob-sil .g-ph{opacity:0}
 .ob-sil.on .g,.ob-sil.on .g-ph{opacity:1;animation:toGold .6s ease}
 @keyframes toGold{from{opacity:0}}
+.ob-sil.on .pic:not(:has(.g)) .m{filter:sepia(1) saturate(2.4) hue-rotate(-12deg) brightness(.95) contrast(1.05);animation:toGoldF .6s ease}
+@keyframes toGoldF{from{filter:none}}
 .ob-sil .ck{position:absolute;top:14px;right:14px;z-index:2;width:26px;height:26px;border-radius:13px;background:linear-gradient(135deg,#FFD08E,#FF9A62);display:grid;place-items:center;color:#3A0614;box-shadow:0 0 12px rgba(255,208,142,.7)}
 .ob-sil .t{font-size:17px;font-weight:600}
 .ob-sil .s{font-size:12px;color:#A8979C}
@@ -946,7 +948,7 @@ const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
    propre copie hors ligne et renvoie les écritures dès que le réseau revient.
    ===================================================================== */
 // Numéro de version de cette page : le changer à chaque envoi sur GitHub pour que les appareils proposent la mise à jour.
-const APP_VERSION = '2026-10-12-6';
+const APP_VERSION = '2026-10-12-7';
 const FIREBASE_VERSION = '10.12.2';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
@@ -1355,6 +1357,8 @@ const OB_N = 9;
 const FIL_D = 'M2 12 C40 0 72 24 110 12 C148 0 180 24 218 12 C240 5 250 10 258 12';
 const FIL_PTS = [[2,12],[30.5,8.7],[59,12.5],[87.6,15.5],[115.8,10.4],[144.4,9.1],[172.9,13.5],[201.6,15.2],[229.7,9.1],[258,12]];   // point doré à k/9 du fil (calculé sur le tracé)
 const CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
+// Statue : on essaie .jpg, puis .webp ; sans fichier, l'image disparaît (carte « Statue à venir » ou effet or automatique).
+const IMG_WEBP = "if(this.dataset.w){this.remove()}else{this.dataset.w=1;this.src=this.src.replace(/\.jpg$/,'.webp')}";
 const sexIdx = s => s==='homme'?1 : s==='femme'?0 : 2;
 const silName = (id,sex) => SILHOUETTES[id].n[sexIdx(sex)];
 const placeEquip = d => { const pl=PLACES[d.lieu]; return pl.eq || (d.equipment||[]).filter(e=>e!=='salle'); };
@@ -1436,7 +1440,7 @@ function renderOnboarding(){
       +(d.sex==='np'?`<div class="ob-seg" role="group" aria-label="Statues affichées"><span>Voir :</span>${[['femme','Femmes'],['homme','Hommes']].map(([k,l])=>`<button data-a="obview" data-v="${k}" aria-pressed="${view===k}">${l}</button>`).join('')}</div>`:'')
       +`<div class="ob-grid" role="radiogroup" aria-label="Silhouette visée">${Object.entries(SILHOUETTES).map(([k,s])=>{ const on=d.silhouette===k, name=silName(k,d.sex), f='silhouettes/silhouette-'+k+'-'+view;
         return `<button class="ob-sil ${on?'on':''}" role="radio" aria-checked="${on}" data-a="obpick" data-k="silhouette" data-v="${k}">
-          <span class="pic"><span class="m-ph"></span><span class="g-ph"></span><span class="soon">STATUE À VENIR</span><img class="m" src="${f}.jpg" alt="Statue ${esc(name)}, en marbre" onerror="this.remove()"><img class="g" src="${f}-or.jpg" alt="" onerror="this.remove()"></span>
+          <span class="pic"><span class="m-ph"></span><span class="g-ph"></span><span class="soon">STATUE À VENIR</span><img class="m" src="${f}.jpg" alt="Statue ${esc(name)}, en marbre" onerror="${IMG_WEBP}"><img class="g" src="${f}-or.jpg" alt="" onerror="${IMG_WEBP}"></span>
           ${on?`<span class="ck" aria-hidden="true">${CHECK}</span>`:''}<span class="t">${name}</span><span class="s">${s.s}</span></button>`; }).join('')}</div>`+next();
   }
   else if(st===6){
