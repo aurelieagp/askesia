@@ -1031,7 +1031,7 @@ const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
    propre copie hors ligne et renvoie les écritures dès que le réseau revient.
    ===================================================================== */
 // Numéro de version de cette page : le changer à chaque envoi sur GitHub pour que les appareils proposent la mise à jour.
-const APP_VERSION = '2026-10-12-8';
+const APP_VERSION = '2026-10-13-1';
 const FIREBASE_VERSION = '10.12.2';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
@@ -1509,6 +1509,7 @@ function renderSettings(){
           <button class="btn big google" data-a="signin">${GOOGLE_G} Se connecter pour synchroniser</button>`}
       <button class="btn danger small" style="align-self:flex-start" data-a="sheet" data-v="reset">${ic('trash')} Tout effacer</button>
     </section>
+    <p class="muted" style="text-align:center;font-size:.8rem;margin:0">Version ${APP_VERSION}</p>
   </div></main>`;
 }
 
