@@ -169,6 +169,11 @@ p{margin:0}
 .choice[aria-pressed="true"] .tick{background:var(--cta);border-color:transparent;box-shadow:0 4px 12px var(--cta-glow)}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;background:var(--glass);border:1px solid var(--edge-soft);padding:5px;border-radius:999px}
 .seg button{min-height:50px;border-radius:999px;font-weight:300;font-size:1.4rem;border:1px solid transparent}
+.seg.sm{padding:3px}
+.seg.sm button{min-height:38px;font-size:.95rem}
+.feel{display:flex;flex-direction:column;gap:6px;width:100%;max-width:340px}
+.feel>.muted{font-size:.85rem}
+.feel>.muted:empty{display:none}
 .seg button[aria-pressed="true"]{background:var(--glass-hi);color:var(--accent);font-weight:500;border-color:var(--edge);box-shadow:0 6px 16px var(--shade)}
 .steps{display:flex;gap:6px}
 .steps i{flex:1;height:4px;border-radius:4px;background:var(--glass-2)}
@@ -594,7 +599,7 @@ const LIFT = {squat_barre:[0,1], presse:[0,1.5], goblet:[0,.35], bulgare:[0,.15]
 const PROGRAMS = {
   1:[['A'],['A']],
   2:[['A','B'],['HAUT','BAS']],
-  3:[['A','B','C'],['PUSH','PULL','JAMBES']],
+  3:[['FBPUSH','FBPULL','FBJAMBES'],['PUSH','PULL','JAMBES']],
   4:[['HAUT','BAS','HAUT','BAS'],['HAUT','BAS','HAUT','BAS']],
   5:[['HAUT','BAS','A','HAUT','BAS'],['PUSH','PULL','JAMBES','HAUT','BAS']],
   6:[null,['PUSH','PULL','JAMBES','PUSH','PULL','JAMBES']]
@@ -605,7 +610,11 @@ const SUGGESTED_DAYS = {1:[2], 2:[0,3], 3:[0,2,4], 4:[0,1,3,4], 5:[0,1,2,4,5], 6
 const TPL = {
   A:{n:'Full body A', region:'full', slots:['squat','push_h','pull_h','glutes','lateral','core','triceps']},
   B:{n:'Full body B', region:'full', slots:['hinge','push_v','pull_v','lunge','biceps','abs','calves']},
-  C:{n:'Full body C', region:'full', slots:['lunge','push_h','pull_v','hinge','push_v','core','biceps']},
+  C:{n:'Full body C', region:'full', slots:['lunge','push_h','pull_v','hinge','push_v','core','biceps']},   // ancien programme (séances déjà faites)
+  // Full body à dominante : tout le corps, mais surtout une zone (les jambes ne reviennent pas à chaque séance).
+  FBPUSH:{n:'Full body Push', region:'full', slots:['push_h','push_v','glutes','pull_h','triceps','lateral','core']},
+  FBPULL:{n:'Full body Pull', region:'full', slots:['pull_v','pull_h','hinge','push_h','rear','biceps','abs']},
+  FBJAMBES:{n:'Full body Jambes', region:'full', slots:['squat','lunge','glutes','pull_h','push_h','calves','abs']},
   HAUT:{n:'Haut du corps', region:'upper', slots:['push_h','pull_h','push_v','pull_v','lateral','biceps','triceps']},
   BAS:{n:'Bas du corps', region:'lower', slots:['squat','hinge','lunge','glutes','calves','core','abs']},
   PUSH:{n:'Push', region:'upper', slots:['push_h','push_v','push_h','lateral','triceps','core']},
@@ -831,8 +840,9 @@ function setsFor(p,pos,deload){
 }
 
 // Emplacement → premier exercice compatible (ou la variante choisie par l'utilisatrice).
-function slotExercise(key,i,p,used){
-  const fam=TPL[key].slots[i], chosen=p.swaps && p.swaps[key+':'+i];
+function slotExercise(key,i,p,used,fam){
+  const base=TPL[key].slots[i]; fam=fam||base;
+  const chosen=fam===base && p.swaps && p.swaps[key+':'+i];
   if(chosen && EXM[chosen] && available(EXM[chosen],p) && !used.has(chosen)) return EXM[chosen];
   // 50 ans et + : seulement le programme doux ; une famille sans exercice doux est sautée.
   if(p.age>=AGE_EASY) return EX.find(e=>e.f===fam && e.senior && available(e,p) && !used.has(e.id)) || null;
@@ -842,12 +852,23 @@ function slotExercise(key,i,p,used){
   return ex;
 }
 // Séance type → liste d'exercices. La durée fixe le nombre ; un emplacement sans exercice est sauté.
+const ACC=['lateral','rear','biceps','triceps','calves','core','abs'];   // familles d'appoint (isolation)
+const famMus=f=>(EX.find(e=>e.f===f)||{mus:[]}).mus[0];
+// Exercices d'appoint : les muscles les moins travaillés de la semaine (jamais au-delà de 20 séries), un muscle par exercice.
+function accFamilies(slots,vol){
+  const own=slots.filter(f=>ACC.includes(f)), v=f=>vol[famMus(f)]||0, r=f=>own.includes(f)?own.indexOf(f):9+ACC.indexOf(f), mus=new Set(), out=[];
+  ACC.filter(f=>v(f)<VOLUME.high).sort((a,b)=>v(a)-v(b) || r(a)-r(b))
+    .forEach(f=>{ if(out.length<own.length && !mus.has(famMus(f))){ mus.add(famMus(f)); out.push(f); } });
+  return out;
+}
 function plan(key,p,opts){
   opts=opts||{};
   const want=DUR_EX[p.duration]||5, out=[], used=new Set(), now=opts.now||Date.now();
+  const acc=opts.vol && accFamilies(TPL[key].slots,opts.vol);
   TPL[key].slots.forEach((fam,i)=>{
     if(out.length>=want) return;
-    const ex=slotExercise(key,i,p,used); if(!ex) return;
+    if(acc && ACC.includes(fam)){ fam=acc.shift(); if(!fam) return; }
+    const ex=slotExercise(key,i,p,used,fam); if(!ex) return;
     used.add(ex.id);
     out.push({slot:i, exId:ex.id, sets:setsFor(p,out.length,opts.deload), range:repRange(ex,p,now), rest:restFor(ex,p)});
   });
@@ -875,7 +896,7 @@ function roundTo(v,inc){ return Math.max(inc, round2(Math.round(v/inc)*inc)); }
 // Historique d'un exercice, hors semaines de décharge et séries d'approche.
 function entries(ws,exId){
   const out=[];
-  ws.forEach(s=>{ if(s.deload) return; const e=(s.exercises||[]).find(x=>x.exId===exId); if(e){ const w=work(e.sets); if(w.length) out.push({s, sets:w}); } });
+  ws.forEach(s=>{ if(s.deload) return; const e=(s.exercises||[]).find(x=>x.exId===exId); if(e){ const w=work(e.sets); if(w.length) out.push({s, sets:w, feel:e.feel||s.feeling}); } });
   return out;
 }
 function scoreOf(ex,sets){
@@ -897,8 +918,8 @@ function suggest(item,p,ws,ctx){
     const base=LEVELS[p.level].core;
     if(!last) r={secs:base, note:'Première fois : tiens '+base+' secondes, sans forcer.'};
     else {
-      const mx=Math.max(...last.sets.map(s=>+s.secs||0)), secs=last.s.feeling==='dur'?mx:mx+5;
-      r={secs, up:secs>mx, note:secs>mx?'+5 s par rapport à la dernière fois.':'Même durée que la dernière fois.'};
+      const mx=Math.max(...last.sets.map(s=>+s.secs||0)), secs=last.feel==='dur'?mx:last.feel==='facile'?mx+10:mx+5;
+      r={secs, up:secs>mx, note:secs>mx?'+'+(secs-mx)+' s par rapport à la dernière fois.':'Même durée que la dernière fois.'};
       if(secs>60 && ex.hard){ r.harder=true; r.note+=' Tu dépasses 60 s : essaie la variante plus dure.'; }
     }
   } else if(isWeighted(ex)){
@@ -910,23 +931,23 @@ function suggest(item,p,ws,ctx){
       const kg=Math.max(...last.sets.map(s=>+s.kg||0)), atKg=last.sets.filter(s=>+s.kg===kg);
       const allTop=atKg.length>=Math.min(item.sets,last.sets.length) && atKg.every(s=>+s.reps>=hi);
       const under=e=>!!e && Math.max(...e.sets.map(s=>+s.kg||0))===kg && Math.min(...e.sets.filter(s=>+s.kg===kg).map(s=>+s.reps||0))<lo;
-      if(allTop && last.s.feeling!=='dur'){
+      if(allTop && last.feel!=='dur'){
         const nk=round2(kg+inc);
         r={kg:nk, reps:lo, up:true, note:'Tu as tout validé à '+fmt(kg)+' kg : on monte à '+fmt(nk)+' kg'+per+'.'};
       } else if(under(last) && under(hist[hist.length-2])){
         const nk=Math.max(inc,round2(kg-inc));
         r={kg:nk, reps:lo, note:'Deux fois sous '+lo+' répétitions à '+fmt(kg)+' kg : on allège à '+fmt(nk)+' kg pour repartir.'};
       } else {
-        const reps=Math.min(hi,Math.max(lo,Math.min(...atKg.map(s=>+s.reps||0))+1));
-        r={kg, reps, note: allTop ? 'Séance notée dure : on garde '+fmt(kg)+' kg, vise '+reps+' répétitions.' : 'Même charge, vise '+reps+' répétitions sur chaque série.'};
+        const reps=Math.min(hi,Math.max(lo,Math.min(...atKg.map(s=>+s.reps||0))+(last.feel==='facile'?2:1)));
+        r={kg, reps, note: allTop ? 'Noté dur la dernière fois : on garde '+fmt(kg)+' kg, vise '+reps+' répétitions.' : 'Même charge, vise '+reps+' répétitions sur chaque série.'};
       }
     }
   } else {
     const lo=item.range[0], hi=item.range[1], base=Math.min(Math.max(LEVELS[p.level].bw,lo),hi+3);
     if(!last) r={reps:base, note:'Première fois : vise '+base+' répétitions propres.'};
     else {
-      const mn=Math.min(...last.sets.map(s=>+s.reps||0)), reps=last.s.feeling==='dur'?mn:mn+1;
-      r={reps, up:reps>mn, note:reps>mn?'Une répétition de plus que la dernière fois.':'Même objectif que la dernière fois.'};
+      const mn=Math.min(...last.sets.map(s=>+s.reps||0)), reps=last.feel==='dur'?mn:last.feel==='facile'?mn+2:mn+1;
+      r={reps, up:reps>mn, note:reps>mn+1?'Deux répétitions de plus que la dernière fois.':reps>mn?'Une répétition de plus que la dernière fois.':'Même objectif que la dernière fois.'};
       if(reps>20 && ex.hard){ r.harder=true; r.note+=' Plus de 20 répétitions : passe à la variante plus dure.'; }
     }
   }
@@ -966,12 +987,19 @@ function deloadReason(p,ws,now){
 }
 
 // Volume par muscle de la semaine : 1 pour le muscle principal, 0,5 pour chaque secondaire.
-function weekVolume(ws,now){
-  const m=+mondayOf(now), e=m+7*DAY, v={};
+function weekVolume(ws,now,from,to){
+  const m=from!=null?from:+mondayOf(now), e=to!=null?to:m+7*DAY, v={};
   ws.forEach(s=>{ const t=+new Date(s.date); if(t<m||t>=e) return;
     (s.exercises||[]).forEach(x=>{ const ex=EXM[x.exId]; if(!ex) return; const n=work(x.sets).length;
       ex.mus.forEach((mu,i)=>{ v[mu]=(v[mu]||0)+n*(i?0.5:1); }); }); });
   return v;
+}
+// Séance proposée : celle dont les muscles ont le plus récupéré (séries des 72 dernières heures) ; à égalité, l'ordre du programme.
+function restedIndex(p,ws,now){
+  const rot=rotation(p), ni=nextIndex(p,ws), fat=weekVolume(ws,now,now-3*DAY,now+1);
+  let best=ni, bs=Infinity;
+  rot.forEach((_,j)=>{ const i=(ni+j)%rot.length, sc=plan(rot[i],p).reduce((a,it)=>a+(fat[EXM[it.exId].mus[0]]||0),0); if(sc<bs-1e-9){ bs=sc; best=i; } });
+  return best;
 }
 function volumeZone(n){ return n<VOLUME.low ? 'low' : n>VOLUME.high ? 'high' : 'ok'; }
 
@@ -1046,7 +1074,7 @@ const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
    propre copie hors ligne et renvoie les écritures dès que le réseau revient.
    ===================================================================== */
 // Numéro de version de cette page : le changer à chaque envoi sur GitHub pour que les appareils proposent la mise à jour.
-const APP_VERSION = '2026-10-14-1';
+const APP_VERSION = '2026-10-19-1';
 const FIREBASE_VERSION = '10.12.2';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
@@ -1064,7 +1092,7 @@ const Store = {
   fb:null, auth:null, db:null, user:null, uid:null, unsub:[], draftT:null,
   init(){
     S.profile=lsGet('reprise.profile'); S.sessions=lsGet('reprise.sessions')||[];
-    this.load().catch(e=>{ console.warn('Firebase indisponible', e); this.ready('unavailable'); });
+    this.loading=this.load().catch(e=>{ console.warn('Firebase indisponible', e); this.loading=null; this.ready('unavailable'); });
     // Sans réseau au démarrage, on n'attend pas plus de 5 secondes.
     setTimeout(()=>{ if(!S.ready) this.ready('unavailable'); },5000);
   },
@@ -1103,6 +1131,10 @@ const Store = {
     const cloudDraft=ds.exists()&&ds.data().draft?clone(ds.data().draft):null;
     const cloudEmpty=!cloudProf && !cloudSes.length;
     const newer=(a,b)=>(a&&a.updatedAt||'')>(b&&b.updatedAt||'');
+    let got=0;
+    const merge=list=>{ const ids=new Set(S.sessions.map(x=>x.id)); let n=0;
+      (list||[]).forEach(x=>{ if(x && x.id && !ids.has(x.id)){ ids.add(x.id); S.sessions.push(x); n++; this.write(()=>fs.setDoc(fs.doc(this.sesCol(),x.id),clone(x))); } });
+      return n; };
     if(owner===uid){
       // Mêmes données, peut-être modifiées hors ligne : le plus récent gagne.
       if(cloudProf && !newer(S.profile,cloudProf)) S.profile=cloudProf; else if(S.profile) this.write(()=>fs.setDoc(this.ref(),clone(S.profile)));
@@ -1118,11 +1150,15 @@ const Store = {
       if(draft) this.write(()=>fs.setDoc(this.ref('state','draft'),{draft:clone(draft)}));
       toast('Tes données sont maintenant sauvegardées sur ton compte.');
     } else {
-      // Le compte a déjà des données (ou l'appareil appartenait à quelqu'un d'autre) : on prend celles du compte.
-      if(owner==='guest' && S.sessions.length) lsSet('askesia.guestBackup',{profile:S.profile,sessions:S.sessions,at:new Date().toISOString()});
-      S.profile=cloudProf; S.sessions=cloudSes;
+      // Le compte a déjà des données : on prend celles du compte, et on y ajoute les séances faites sans compte sur cet appareil
+      // (celles d'un autre compte restent à l'autre compte).
+      const mine=owner==='guest'||owner==null ? S.sessions : [];
+      S.profile=cloudProf; S.sessions=cloudSes; got+=merge(mine);
       draft=cloudDraft; lsSet('reprise.draft',draft);
     }
+    // Séances mises de côté par l'ancienne version : on les rend au compte.
+    const bk=lsGet('askesia.guestBackup'); if(bk){ got+=merge(bk.sessions); lsSet('askesia.guestBackup',null); }
+    if(got) toast(got+' séance'+(got>1?'s':'')+' récupérée'+(got>1?'s':'')+' et ajoutée'+(got>1?'s':'')+' à ton compte.');
     if(!draft && cloudDraft){ draft=cloudDraft; lsSet('reprise.draft',draft); }
     S.sessions.sort((a,b)=>a.date<b.date?-1:1);
     this.cache();
@@ -1142,7 +1178,7 @@ const Store = {
       S.sessions=list; this.cache(); if(ui.screen!=='workout') render();
     },e=>console.warn(e)));
   },
-  cache(){ lsSet('reprise.profile',S.profile); lsSet('reprise.sessions',S.sessions); lsSet(OWNER_KEY,this.uid||'guest'); },
+  cache(){ lsSet('reprise.profile',S.profile); lsSet('reprise.sessions',S.sessions); if(this.uid) lsSet(OWNER_KEY,this.uid); },
   saveProfile(p){ S.profile=stamp(p); this.cache(); this.write(()=>this.fb.fs.setDoc(this.ref(),clone(S.profile))); },
   saveSession(x){ stamp(x); S.sessions=S.sessions.filter(y=>y.id!==x.id).concat([x]).sort((a,b)=>a.date<b.date?-1:1); this.cache();
     this.write(()=>this.fb.fs.setDoc(this.fb.fs.doc(this.sesCol(),x.id),clone(x))); },
@@ -1157,6 +1193,7 @@ const Store = {
   },
   // Connexion Google : fenêtre, ou redirection si la fenêtre est bloquée (iPhone).
   async signIn(){
+    if(!this.auth){ if(!this.loading) this.loading=this.load().catch(e=>{ console.warn(e); this.loading=null; }); await this.loading; }   // réseau lent au démarrage : on réessaie
     if(!this.auth){ toast(navigator.onLine===false?'Pas de connexion internet.':'Connexion indisponible pour le moment.'); return; }
     const A=this.fb.auth, provider=new A.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
@@ -1280,7 +1317,7 @@ function render(){
   const root=$('#root'); if(!S.ready){ root.innerHTML=renderSplash(); return; }
   if(ui.screen==='workout' && draft) readInputs();
   let html;
-  if(Store.authState==='out' && !lsGet(GUEST_KEY)) html=renderLogin();
+  if(Store.authState!=='in' && !lsGet(GUEST_KEY) && (Store.authState==='out' || !S.profile)) html=renderLogin();
   else if(!S.profile || ui.ob.edit) html=renderOnboarding();
   else if(ui.screen==='workout' && draft) html=(draft.warmup && !draft.warmup.done) ? renderWarmup() : renderWorkout();
   else if(ui.screen==='summary' && ui.summary) html=renderSummary();
@@ -1297,9 +1334,9 @@ function renderTab(){
 }
 
 function renderHome(){
-  const p=S.profile, ws=workouts(), t=now(), rot=rotation(p), ni=nextIndex(p,ws), pk=lsGet(PICK_KEY), sel=pk&&rot[pk.i]===pk.k?pk:null, idx=sel?sel.i:ni, key=rot[idx];
+  const p=S.profile, ws=workouts(), t=now(), rot=rotation(p), ni=restedIndex(p,ws,t), pk=lsGet(PICK_KEY), sel=pk&&rot[pk.i]===pk.k?pk:null, idx=sel?sel.i:ni, key=rot[idx];
   const dl=deloadState(p,ws), reason=deloadReason(p,ws,t), ret=isReturning(ws,t);
-  const gym=hasGym(p), home=gym&&!!(sel&&sel.home), items=inOrder(plan(key,home?homeOf(p):p,{deload:dl.active, now:t}), sel&&sel.order);
+  const gym=hasGym(p), home=gym&&!!(sel&&sel.home), items=inOrder(plan(key,home?homeOf(p):p,{deload:dl.active, now:t, vol:weekVolume(ws,t)}), sel&&sel.order);
   ui.cur={k:key, i:idx, home};
   const lv=levelInfo(totalXp()), wc=weekCount(ws,t), streak=weekStreak(), prs=totals().prs;
   const m=mondayOf(t), todayK=dayKey(t), doneDays=new Set(ws.map(s=>dayKey(s.date)));
@@ -1321,7 +1358,7 @@ function renderHome(){
       <div class="row wrap" style="gap:8px"><button class="btn primary small" data-a="deloadyes">Faire une semaine allégée</button><button class="btn ghost small" data-a="deloadno">Pas maintenant</button></div></section>`:''}
     ${today&&!draft&&!sel?renderDoneCard(today,key,wc):`<section class="glow stack${ui.flip?' fi':''}">
       ${gym?`<button class="iconbtn sm homebtn" data-a="homeswap" aria-pressed="${home}" aria-label="Version à la maison">${ic('home')}</button>`:''}
-      <div class="stack-s" style="gap:4px${gym?';padding-right:36px':''}"><span class="eyebrow hot">${new Date(t).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} · séance ${idx+1} sur ${rot.length}${home?' · à la maison':''}</span><h1>${esc(TPL[key].n)}</h1><span class="muted">${items.length} exercices · environ ${estMinutes(items)} min, plus 5 min d’échauffement</span></div>
+      <div class="stack-s" style="gap:4px${gym?';padding-right:36px':''}"><span class="eyebrow hot">${new Date(t).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} · séance ${idx+1} sur ${rot.length}${home?' · à la maison':''}</span><h1>${esc(TPL[key].n)}</h1><span class="muted">${items.length} exercices · environ ${estMinutes(items)} min, plus 5 min d’échauffement${!sel&&idx!==nextIndex(p,ws)?'<br>Proposée pour laisser récupérer les muscles travaillés ces derniers jours.':''}</span></div>
       <ol data-sort="home">${items.map(it=>{const ex=EXM[it.exId];return `<li data-k="${it.slot}">${grip(ex.n)}<span>${esc(ex.n)}</span><b>${targetLabel(ex,it)}</b></li>`}).join('')}</ol>
       <button class="btn primary big" data-a="start" data-v="${key}" data-i="${idx}" ${home?'data-h="1"':''}>${ic('play')} Commencer la séance</button>
     </section>`}
@@ -1541,11 +1578,10 @@ function renderLogin(){
     <h1 class="hero-title">Askesia</h1>
     <p style="font-size:1.12rem;max-width:30em">On ne devient pas fort d’un coup : on se façonne, séance après séance.</p>
     <section class="card stack" style="margin-top:12px">
-      <div class="stack-s"><h2>Connexion</h2><p class="muted" style="font-size:.92rem">Connecte-toi pour retrouver tes séances sur tous tes appareils. Tu peux aussi commencer sans compte et te connecter plus tard : rien ne sera perdu.</p></div>
+      <div class="stack-s"><h2>Connexion</h2><p class="muted" style="font-size:.92rem">Tu as déjà un compte ? Connecte-toi pour retrouver ton programme et tes séances, sans refaire le questionnaire. Première fois ? Connecte-toi aussi : le questionnaire suit.</p></div>
       <button class="btn big google" data-a="signin">${GOOGLE_G} Se connecter avec Google</button>
-      <button class="btn ghost big" data-a="guest">Continuer sans compte</button>
     </section>
-    <p class="muted" style="font-size:.82rem">Sans compte, tes données restent uniquement sur cet appareil.</p>
+    <p class="muted" style="font-size:.82rem;text-align:center"><button class="link" data-a="guest">Continuer sans compte</button><br>Sans compte, tes données restent uniquement sur cet appareil.</p>
   </div></main>`;
 }
 
@@ -1748,6 +1784,7 @@ function renderWorkout(){
         <td><input class="cell" id="r-${w.cur}-${i}" type="number" inputmode="numeric" min="0" value="${ex.t?s.secs:s.reps}" data-in="${ex.t?'secs':'reps'}" data-i="${i}" data-ex="${w.cur}" data-id="${cur.exId}" aria-label="${unit} série ${i+1}"></td>
         <td><button class="check" data-a="toggle" data-v="${i}" aria-label="${s.done?'Annuler la série':'Valider la série'} ${i+1}">${ic('check')}</button></td></tr>`).join('')}</tbody>
     </table>
+    ${cur.sets.every(s=>s.done)?feelRow(w.cur,cur.feel,'Ressenti sur cet exercice'):''}
     <div class="row wrap" style="gap:8px">
       <button class="btn ghost small" data-a="addset">${ic('plus')} Série</button>
       ${cur.sets.length>1?`<button class="btn ghost small" data-a="delset">${ic('minus')} Série</button>`:''}
@@ -1782,9 +1819,16 @@ function flipTo(pick){
   if(!c || matchMedia('(prefers-reduced-motion: reduce)').matches) return go();
   c.classList.add('fo'); setTimeout(go,220);
 }
+const FEELS=[['facile','Facile'],['ok','Bien'],['dur','Dur']];
+const feelRow=(i,f,label)=>`<div class="feel"><span class="muted">${label}</span><div class="seg sm" role="group" aria-label="Ressenti">${FEELS.map(([k,l])=>`<button data-a="exfeel" data-i="${i}" data-v="${k}" aria-pressed="${f===k}">${l}</button>`).join('')}</div></div>`;
+// Ressenti de la séance : « dur » si au moins la moitié des exercices notés l'étaient (sert à proposer la semaine allégée).
+function sessionFeel(exs){
+  const f=exs.map(e=>e.feel).filter(Boolean), n=k=>f.filter(x=>x===k).length;
+  return !f.length ? 'ok' : n('dur')*2>=f.length ? 'dur' : n('facile')*2>f.length ? 'facile' : 'ok';
+}
 function startWorkout(key,idx,home){
   const p=home?homeOf(S.profile):S.profile, ws=workouts(), t=now(), dl=deloadState(p,ws).active, ctx={deload:dl, returning:isReturning(ws,t), now:t};
-  const pk=lsGet(PICK_KEY), items=inOrder(plan(key,p,{deload:dl, now:t}), pk&&pk.k===key&&pk.order); lsSet(PICK_KEY,null);
+  const pk=lsGet(PICK_KEY), items=inOrder(plan(key,p,{deload:dl, now:t, vol:weekVolume(ws,t)}), pk&&pk.k===key&&pk.order); lsSet(PICK_KEY,null);
   const exs=items.map(it=>draftExercise(it,ctx));
   const fw=exs.find(e=>isWeighted(EXM[e.exId]));
   if(fw) fw.warm=approachSets(+fw.sets[0].kg||EXM[fw.exId].start,EXM[fw.exId],p);
@@ -1809,7 +1853,7 @@ function validateSet(i){
   else if(draft.cur<draft.ex.length-1){ const nx=draft.ex.findIndex((e,k)=>k>draft.cur && e.sets.some(x=>!x.done)); const tg=nx>=0?nx:draft.cur+1; draft.cur=tg; nextLabel=EXM[draft.ex[tg].exId].n; }
   saveDraft();
   if(allDone){ render(); finishWorkout(); return; }
-  startRest(cur.rest,nextLabel); render();
+  startRest(cur.rest,nextLabel); if(exDone){ draft.rest.fi=draft.ex.indexOf(cur); saveDraft(); } render();
 }
 // « Trop dur » / « trop facile » : change l'exercice et mémorise le choix pour cet emplacement.
 function switchVariant(dir){
@@ -1878,7 +1922,7 @@ function stopChrono(save){
 function finishWorkout(){
   readInputs(); endRest(false); wakeLock(false);
   const w=draft, date=new Date().toISOString();
-  const exercises=w.ex.map(e=>({exId:e.exId, sets:[
+  const exercises=w.ex.map(e=>({exId:e.exId, ...(e.feel?{feel:e.feel}:{}), sets:[
       ...(e.warm||[]).filter(s=>s.done).map(s=>({kg:+s.kg||0, reps:+s.reps||0, secs:0, warm:true})),
       ...e.sets.filter(s=>s.done).map(s=>({kg:s.kg===''?0:+s.kg, reps:s.reps===''?0:+s.reps, secs:s.secs===''?0:+s.secs}))]}))
     .filter(e=>work(e.sets).length);
@@ -1887,7 +1931,7 @@ function finishWorkout(){
   if(!w.deload) exercises.forEach(e=>{ const ex=EXM[e.exId], prev=bestBefore(e.exId), cur=scoreOf(ex,work(e.sets)); if(prev!=null && cur!=null && cur>prev+1e-9) prs.push(e.exId); });
   const setsN=exercises.reduce((a,e)=>a+work(e.sets).length,0);
   const vol=exercises.reduce((a,e)=>a+(isWeighted(EXM[e.exId])?work(e.sets).reduce((b,s)=>b+s.kg*s.reps,0):0),0);
-  ui.summary={id:w.id, kind:'workout', tpl:w.tpl, rot:w.rot, title:w.title, date, durationSec:Math.round((now()-w.startedAt)/1000), exercises, prs, xp:50+5*setsN+25*prs.length, feeling:'ok', deload:!!w.deload, _vol:vol, _sets:setsN};
+  ui.summary={id:w.id, kind:'workout', tpl:w.tpl, rot:w.rot, title:w.title, date, durationSec:Math.round((now()-w.startedAt)/1000), exercises, prs, xp:50+5*setsN+25*prs.length, deload:!!w.deload, _vol:vol, _sets:setsN};
   ui.screen='summary'; window.scrollTo(0,0); render();
 }
 function renderSummary(){
@@ -1902,9 +1946,8 @@ function renderSummary(){
     ${s._vol?`<p class="muted">Volume soulevé : <b style="color:var(--fg)">${fmtInt(s._vol)} kg</b></p>`:''}
     ${s.prs.length?`<section class="card stack-s" style="border-color:var(--gold)"><span class="eyebrow" style="color:var(--gold)">${s.prs.length>1?s.prs.length+' nouveaux records':'Nouveau record'}</span>
       ${s.prs.map(id=>{const e=s.exercises.find(x=>x.exId===id);return `<div class="row">${ic('trophy')}<span class="grow"><b>${esc(EXM[id].n)}</b></span><span class="num" style="font-size:1.2rem">${esc(prText(EXM[id],work(e.sets)))}</span></div>`}).join('')}</section>`:''}
-    <section class="stack-s"><h2>C’était comment&nbsp;?</h2><p class="muted" style="font-size:.9rem">Ça ajuste la prochaine séance : si c’était dur, on garde les mêmes charges.</p>
-      <div class="seg">${[['facile','Facile'],['ok','Bien'],['dur','Dur']].map(([k,l])=>`<button data-a="feel" data-v="${k}" aria-pressed="${s.feeling===k}" style="font-size:1.05rem">${l}</button>`).join('')}</div></section>
-    <section class="card flat" style="padding-block:4px"><div class="list">${s.exercises.map(e=>{const ex=EXM[e.exId];return `<div class="item"><span class="grow"><span class="t">${esc(ex.n)}</span><br><span class="s">${setsText(ex,e.sets)}</span></span></div>`}).join('')}</div></section>
+    <section class="stack-s"><h2>C’était comment&nbsp;?</h2><p class="muted" style="font-size:.9rem">Pour chaque exercice, si tu veux. Dur : on garde la même charge. Facile : on monte un peu plus vite.</p></section>
+    <section class="card flat" style="padding-block:4px"><div class="list">${s.exercises.map((e,i)=>{const ex=EXM[e.exId];return `<div class="item stack-s" style="align-items:stretch"><span><span class="t">${esc(ex.n)}</span><br><span class="s">${setsText(ex,e.sets)}</span></span>${feelRow(i,e.feel,'')}</div>`}).join('')}</div></section>
   </div></main>
   <div class="dock"><div class="dock-in"><button class="btn primary big" data-a="savesummary">${ic('check')} Enregistrer</button></div></div>`;
 }
@@ -1919,6 +1962,7 @@ function renderLayer(){
     h+=`<div class="rest" role="dialog" aria-label="${esc(draft.rest.label)}"><div class="rest-in">
       <span class="eyebrow">${esc(draft.rest.label)}</span>
       <div class="ring"><svg viewBox="0 0 240 240">${RING_DEFS}<circle cx="120" cy="120" r="104" fill="none" stroke="var(--glass-2)" stroke-width="10"/><circle id="rest-arc" cx="120" cy="120" r="104" fill="none" stroke="url(#rg)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C*(1-Math.max(0,left)/draft.rest.total)).toFixed(1)}"/></svg><span class="t num" id="rest-t">${mmss(left)}</span></div>
+      ${draft.rest.fi!=null&&draft.ex[draft.rest.fi]?feelRow(draft.rest.fi,draft.ex[draft.rest.fi].feel,esc(EXM[draft.ex[draft.rest.fi].exId].n)+' : c’était comment ?'):''}
       ${draft.rest.next?`<p><span class="muted">Ensuite :</span> <b>${esc(draft.rest.next)}</b></p>`:''}
       <div class="row" style="gap:10px"><button class="btn ghost" data-a="restadd" data-v="-15">−15 s</button><button class="btn ghost" data-a="restadd" data-v="15">+15 s</button></div>
       <button class="btn primary big" data-a="restskip" style="max-width:320px">${draft.rest.label==='Repos'?'Passer le repos':'Terminer'}</button>
@@ -2087,9 +2131,9 @@ const A = {
   chronocancel(){ stopChrono(false); },
   finish(){ ui.sheet=null; finishWorkout(); },
   abandon(){ draft=null; saveDraft(); ui.sheet=null; ui.screen=null; endRest(false); wakeLock(false); render(); },
-  feel(d){ ui.summary.feeling=d.v; render(); },
+  exfeel(d){ const e=ui.screen==='summary'?ui.summary.exercises[+d.i]:draft.ex[+d.i]; if(!e) return; if(e.feel===d.v) delete e.feel; else e.feel=d.v; if(ui.screen!=='summary') saveDraft(); render(); },
   savesummary(){
-    const before=levelInfo(totalXp()).lvl, beforeB=gotBadges(), s={...ui.summary}, vol=s._vol, sets=s._sets; delete s._vol; delete s._sets;
+    const before=levelInfo(totalXp()).lvl, beforeB=gotBadges(), s={...ui.summary}, vol=s._vol, sets=s._sets; delete s._vol; delete s._sets; s.feeling=sessionFeel(s.exercises);
     const goal=S.profile.days, wcBefore=weekCount(workouts(),new Date(s.date));
     Store.saveSession(s); draft=null; saveDraft(); ui.summary=null;
     // Écran de victoire : la semaine si cette séance vient d'atteindre l'objectif, sinon la séance du jour.
@@ -2221,7 +2265,7 @@ setTimeout(checkUpdate,4000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ if(ui.screen==='workout'&&draft){ wakeLock(true); if(draft.rest) tickRest(); } } else { wl=null; } });
 
 // Accès aux règles pour les tests automatiques (aucun effet sur l'appli).
-window.Askesia = {inOrder, badgeDone, badgeHow, homeOf, startLoad, obProfile, ui, EX, EXM, TPL, PROGRAMS, GOALS, LEVELS, plan, rotation, programFor, needsFewerDays, nextIndex, suggest, incOf, repRange, setsFor, deloadReason, deloadState, isReturning, weekVolume, volumeZone, variantOf, available, approachSets};
+window.Askesia = {Store, S, restedIndex, accFamilies, sessionFeel, inOrder, badgeDone, badgeHow, homeOf, startLoad, obProfile, ui, EX, EXM, TPL, PROGRAMS, GOALS, LEVELS, plan, rotation, programFor, needsFewerDays, nextIndex, suggest, incOf, repRange, setsFor, deloadReason, deloadState, isReturning, weekVolume, volumeZone, variantOf, available, approachSets};
 
 // Séance en cours enregistrée par l'ancienne version : on la rend compatible.
 if(draft && !draft.warmup){ draft.warmup={done:true}; draft.ex.forEach(e=>{ if(!e.range && e.repMin) e.range=[e.repMin,e.repMax]; }); }
