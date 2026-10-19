@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0E0507">
 <meta name="apple-mobile-web-app-title" content="Askesia">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=2">
+<link rel="manifest" href="manifest.webmanifest">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Askesia</title>
 </head>
@@ -573,10 +574,7 @@ const LEVELS = {
 const DUR_EX = {20:4, 30:5, 45:6, 60:7, 75:8};
 // Questionnaire : silhouette visée → objectif d'entraînement ; noms [femme, homme, inclusif].
 const SILHOUETTES = {
-  affute:{n:['Affûtée','Affûté','Affûté·e'], s:'Fine, sèche et dessinée', goal:'perte'},
-  athletique:{n:['Athlétique','Athlétique','Athlétique'], s:'Tonique, équilibrée, sportive', goal:'forme'},
-  muscle:{n:['Musclée','Musclé','Musclé·e'], s:'Volume visible, muscles marqués', goal:'muscle'},
-  puissant:{n:['Puissante','Puissant','Puissant·e'], s:'Large, dense et forte', goal:'force'}
+  affute:{goal:'perte'}, athletique:{goal:'forme'}, muscle:{goal:'muscle'}, puissant:{goal:'force'}
 };
 // Lieu → matériel (null : le matériel coché sous la carte).
 const PLACES = {
@@ -794,6 +792,7 @@ const EXM = Object.fromEntries(EX.map(e=>[e.id,e]));
    l'écran ni au stockage.
    ===================================================================== */
 const DAY = 864e5;
+const addDays = (d,n)=>{ d=new Date(d); d.setDate(d.getDate()+n); return d; };   // jours du calendrier : juste aussi au changement d'heure
 const round2 = v=>Math.round(v*100)/100;
 const work = sets=>(sets||[]).filter(s=>!s.warm);
 const isMain = ex=>ex.k==='P';
@@ -855,22 +854,22 @@ function slotExercise(key,i,p,used,fam){
 const ACC=['lateral','rear','biceps','triceps','calves','core','abs'];   // familles d'appoint (isolation)
 const famMus=f=>(EX.find(e=>e.f===f)||{mus:[]}).mus[0];
 // Exercices d'appoint : les muscles les moins travaillés de la semaine (jamais au-delà de 20 séries), un muscle par exercice.
-function accFamilies(slots,vol){
+function accFamilies(slots,vol,p){
   const own=slots.filter(f=>ACC.includes(f)), v=f=>vol[famMus(f)]||0, r=f=>own.includes(f)?own.indexOf(f):9+ACC.indexOf(f), mus=new Set(), out=[];
-  ACC.filter(f=>v(f)<VOLUME.high).sort((a,b)=>v(a)-v(b) || r(a)-r(b))
+  ACC.filter(f=>v(f)<VOLUME.high && EX.some(e=>e.f===f && available(e,p) && !!e.senior===(p.age>=AGE_EASY))).sort((a,b)=>v(a)-v(b) || r(a)-r(b))
     .forEach(f=>{ if(out.length<own.length && !mus.has(famMus(f))){ mus.add(famMus(f)); out.push(f); } });
   return out;
 }
 function plan(key,p,opts){
   opts=opts||{};
   const want=DUR_EX[p.duration]||5, out=[], used=new Set(), now=opts.now||Date.now();
-  const acc=opts.vol && accFamilies(TPL[key].slots,opts.vol);
+  const acc=opts.vol && accFamilies(TPL[key].slots,opts.vol,p);
   TPL[key].slots.forEach((fam,i)=>{
     if(out.length>=want) return;
     if(acc && ACC.includes(fam)){ fam=acc.shift(); if(!fam) return; }
     const ex=slotExercise(key,i,p,used,fam); if(!ex) return;
     used.add(ex.id);
-    out.push({slot:i, exId:ex.id, sets:setsFor(p,out.length,opts.deload), range:repRange(ex,p,now), rest:restFor(ex,p)});
+    out.push({slot:i, fam, exId:ex.id, sets:setsFor(p,out.length,opts.deload), range:repRange(ex,p,now), rest:restFor(ex,p)});
   });
   return out;
 }
@@ -896,7 +895,7 @@ function roundTo(v,inc){ return Math.max(inc, round2(Math.round(v/inc)*inc)); }
 // Historique d'un exercice, hors semaines de décharge et séries d'approche.
 function entries(ws,exId){
   const out=[];
-  ws.forEach(s=>{ if(s.deload) return; const e=(s.exercises||[]).find(x=>x.exId===exId); if(e){ const w=work(e.sets); if(w.length) out.push({s, sets:w, feel:e.feel||s.feeling}); } });
+  ws.forEach(s=>{ if(s.deload) return; const e=(s.exercises||[]).find(x=>x.exId===exId); if(e){ const w=work(e.sets); if(w.length) out.push({s, sets:w, feel:e.feel||(s.exercises.some(x=>x.feel)?null:s.feeling)}); } });
   return out;
 }
 function scoreOf(ex,sets){
@@ -988,7 +987,7 @@ function deloadReason(p,ws,now){
 
 // Volume par muscle de la semaine : 1 pour le muscle principal, 0,5 pour chaque secondaire.
 function weekVolume(ws,now,from,to){
-  const m=from!=null?from:+mondayOf(now), e=to!=null?to:m+7*DAY, v={};
+  const m=from!=null?from:+mondayOf(now), e=to!=null?to:+addDays(m,7), v={};
   ws.forEach(s=>{ const t=+new Date(s.date); if(t<m||t>=e) return;
     (s.exercises||[]).forEach(x=>{ const ex=EXM[x.exId]; if(!ex) return; const n=work(x.sets).length;
       ex.mus.forEach((mu,i)=>{ v[mu]=(v[mu]||0)+n*(i?0.5:1); }); }); });
@@ -1074,7 +1073,7 @@ const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
    propre copie hors ligne et renvoie les écritures dès que le réseau revient.
    ===================================================================== */
 // Numéro de version de cette page : le changer à chaque envoi sur GitHub pour que les appareils proposent la mise à jour.
-const APP_VERSION = '2026-10-19-1';
+const APP_VERSION = '2026-10-19-4';
 const FIREBASE_VERSION = '10.12.2';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
@@ -1085,6 +1084,7 @@ const FIREBASE_CONFIG = {
   appId: "1:684619492785:web:ae184c40591a1626d96190"
 };
 const GUEST_KEY = 'askesia.guest';   // « Continuer sans compte » choisi
+const SYNC_KEY = 'askesia.synced';   // date de la dernière synchro réussie avec le compte
 const OWNER_KEY = 'askesia.owner';   // à qui appartiennent les données de l'appareil : un uid ou 'guest'
 
 const Store = {
@@ -1139,7 +1139,10 @@ const Store = {
       // Mêmes données, peut-être modifiées hors ligne : le plus récent gagne.
       if(cloudProf && !newer(S.profile,cloudProf)) S.profile=cloudProf; else if(S.profile) this.write(()=>fs.setDoc(this.ref(),clone(S.profile)));
       const byId=new Map(cloudSes.map(x=>[x.id,x]));
-      S.sessions.forEach(x=>{ const c=byId.get(x.id); if(!c||newer(x,c)){ byId.set(x.id,x); this.write(()=>fs.setDoc(fs.doc(this.sesCol(),x.id),clone(x))); } });
+      // Absente du compte : nouvelle (faite depuis la dernière synchro) → on l'envoie ; plus ancienne → supprimée ailleurs, on ne la garde pas.
+      // shortcut: compare l'heure de deux appareils ; une horloge très décalée peut encore faire revenir une séance supprimée.
+      const last=lsGet(SYNC_KEY)||'';
+      S.sessions.forEach(x=>{ const c=byId.get(x.id); if(c?newer(x,c):(x.updatedAt||'')>last){ byId.set(x.id,x); this.write(()=>fs.setDoc(fs.doc(this.sesCol(),x.id),clone(x))); } });
       S.sessions=[...byId.values()];
     } else if(cloudEmpty && (owner==null || owner==='guest') && (S.profile || S.sessions.length)){
       // Première connexion, compte vide : on transfère ce qui est sur l'appareil.
@@ -1161,7 +1164,7 @@ const Store = {
     if(got) toast(got+' séance'+(got>1?'s':'')+' récupérée'+(got>1?'s':'')+' et ajoutée'+(got>1?'s':'')+' à ton compte.');
     if(!draft && cloudDraft){ draft=cloudDraft; lsSet('reprise.draft',draft); }
     S.sessions.sort((a,b)=>a.date<b.date?-1:1);
-    this.cache();
+    this.cache(); lsSet(SYNC_KEY,new Date().toISOString());
   },
   // Les changements faits sur un autre appareil arrivent en direct.
   listen(){
@@ -1210,7 +1213,7 @@ const Store = {
     clearTimeout(this.draftT);
     await this.fb.auth.signOut(this.auth);
     S.profile=null; S.sessions=[]; draft=null;
-    ['reprise.profile','reprise.sessions','reprise.draft',OWNER_KEY,GUEST_KEY].forEach(k=>lsSet(k,null));
+    ['reprise.profile','reprise.sessions','reprise.draft',OWNER_KEY,GUEST_KEY,SYNC_KEY].forEach(k=>lsSet(k,null));
     ui.screen=null; ui.sheet=null; ui.tab='home'; ui.ob={step:0,data:{}}; render();
   },
   continueAsGuest(){ lsSet(GUEST_KEY,true); if(!lsGet(OWNER_KEY)) lsSet(OWNER_KEY,'guest'); render(); }
@@ -1234,9 +1237,9 @@ function targetLabel(ex,it){
   return it.sets+' × '+Math.min(Math.max(LEVELS[S.profile.level].bw,it.range[0]),it.range[1]+3)+side;
 }
 function estMinutes(items){ return Math.round(items.reduce((a,it)=>a+it.sets*(0.75+it.rest/60),0)+3); }
-function weekCount(list,d){ const m=+mondayOf(d), e=m+7*DAY; return list.filter(s=>{const t=+new Date(s.date);return t>=m&&t<e}).length; }
+function weekCount(list,d){ const m=+mondayOf(d), e=+addDays(m,7); return list.filter(s=>{const t=+new Date(s.date);return t>=m&&t<e}).length; }
 function weekStreak(){ const goal=S.profile.days, ws=workouts(); let n=0, m=mondayOf(now()); if(weekCount(ws,m)>=goal) n++;
-  for(let i=0;i<200;i++){ m=new Date(+m-7*DAY); if(weekCount(ws,m)>=goal) n++; else break; } return n; }
+  for(let i=0;i<200;i++){ m=addDays(m,-7); if(weekCount(ws,m)>=goal) n++; else break; } return n; }
 function totalXp(){ return S.sessions.reduce((a,s)=>a+(s.xp||0),0); }
 function levelInfo(xp){ let lvl=1, need=100, acc=0; while(xp>=acc+need){ acc+=need; lvl++; need=100+(lvl-1)*50; } return {lvl, into:xp-acc, need}; }
 function totals(){ const w=workouts(); let vol=0, sets=0, prs=0, time=0;
@@ -1250,7 +1253,7 @@ function prText(ex,sets){ if(ex.t) return Math.max(...sets.map(s=>+s.secs||0))+'
 function bestStreakEver(){
   const ws=workouts(); if(!ws.length) return 0;
   const goal=S.profile.days, end=+mondayOf(now()); let m=mondayOf(ws[0].date), best=0, cur=0;
-  while(+m<=end){ if(weekCount(ws,m)>=goal){ cur++; best=Math.max(best,cur); } else cur=0; m=new Date(+m+7*DAY); }
+  while(+m<=end){ if(weekCount(ws,m)>=goal){ cur++; best=Math.max(best,cur); } else cur=0; m=addDays(m,7); }
   return best;
 }
 function badgeStats(){ const t=totals(); t.bestStreak=bestStreakEver(); t.cardio=cardios().length; return t; }
@@ -1265,9 +1268,9 @@ function badgeDate(b){
   if(b.fam==='seances') return ws[b.seuil-1] ? ws[b.seuil-1].date : null;
   const goal=S.profile.days, end=+mondayOf(now()); let m=mondayOf(ws[0].date), cur=0;
   while(+m<=end){
-    const wk=ws.filter(x=>{ const t=+new Date(x.date); return t>=+m && t<+m+7*DAY; });
+    const wk=ws.filter(x=>{ const t=+new Date(x.date); return t>=+m && t<+addDays(m,7); });
     if(wk.length>=goal){ cur++; if(cur>=b.seuil) return wk[goal-1].date; } else cur=0;
-    m=new Date(+m+7*DAY);
+    m=addDays(m,7);
   }
   return null;
 }
@@ -1310,7 +1313,7 @@ function lineChart(pts,unit){
 function bestLabel(exId){ const ex=EXM[exId]; let bs=null, sc=-1; entries(workouts(),exId).forEach(e=>{ const v=scoreOf(ex,e.sets); if(v!=null&&v>sc){sc=v;bs=e.sets;} }); return bs?prText(ex,bs):'—'; }
 function setsText(ex,sets){ return work(sets).map(x=>ex.t?x.secs+' s':isWeighted(ex)?x.reps+'×'+fmt(+x.kg)+' kg':x.reps+' reps').join(' · '); }
 function lastText(exId){ const h=entries(workouts(),exId), l=h[h.length-1]; if(!l) return null; return 'Dernière fois ('+fmtDate(l.s.date)+') : '+setsText(EXM[exId],l.sets); }
-function weekMinutes(d){ const m=+mondayOf(d), e=m+7*DAY; return S.sessions.reduce((a,s)=>{ const t=+new Date(s.date); if(t<m||t>=e) return a; return a+(s.kind==='workout'?Math.round((s.durationSec||0)/60):(s.minutes||0)); },0); }
+function weekMinutes(d){ const m=+mondayOf(d), e=+addDays(m,7); return S.sessions.reduce((a,s)=>{ const t=+new Date(s.date); if(t<m||t>=e) return a; return a+(s.kind==='workout'?Math.round((s.durationSec||0)/60):(s.minutes||0)); },0); }
 
 /* ---------- Rendu ---------- */
 function render(){
@@ -1370,6 +1373,7 @@ function renderHome(){
       <div class="h-tile"><b>${setsToday}<small> série${setsToday>1?'s':''}</small></b><span>Faites aujourd’hui</span></div>
       <div class="h-tile"><b>${prs}</b><span>Records battus</span></div>
     </div>
+    ${lsGet(GUEST_KEY)&&!Store.uid&&ws.length?`<p class="hint accent">${ic('info')}<span><b>Tes séances ne sont que sur ce téléphone.</b> Sur iPhone, Safari peut les effacer après 7 jours sans visite. <button class="link" data-a="signin">Me connecter pour les garder</button></span></p>`:''}
     ${p.cardio?renderCardioCard():''}
     <section class="h-level stack-s">
       <div class="row between"><span class="lv"><small>Niveau actuel</small><b>Niveau ${lv.lvl} · ${LEVELS[p.level].n}</b></span><button class="link" data-a="tab" data-v="stats">Voir mes progrès</button></div>
@@ -1592,8 +1596,7 @@ const FIL_PTS = [[2,12],[30.5,8.7],[59,12.5],[87.6,15.5],[115.8,10.4],[144.4,9.1
 const CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
 // Statue : on essaie .jpg, puis .webp ; sans fichier, l'image disparaît (carte « Statue à venir » ou effet or automatique).
 const IMG_WEBP = "if(this.dataset.w){this.remove()}else{this.dataset.w=1;this.src=this.src.replace(/\.jpg$/,'.webp')}";
-const sexIdx = s => s==='homme'?1 : s==='femme'?0 : 2;
-const silName = (id,sex) => SILHOUETTES[id].n[sexIdx(sex)];
+const silName = id => GOALS[SILHOUETTES[id].goal].n;   // chaque statue illustre un objectif
 const placeEquip = d => { const pl=PLACES[d.lieu]; return pl.eq || (d.equipment||[]).filter(e=>e!=='salle'); };
 // Une réponse valide par écran.
 function obOk(st,d){
@@ -1669,12 +1672,12 @@ function renderOnboarding(){
     ${d.lieu==='maison-materiel'?`<div class="stack-s"><span class="muted" style="font-size:.95rem">Coche ce que tu as à la maison :</span><div class="ob-chips">${EQUIP.filter(e=>e.id!=='corps'&&e.id!=='salle').map(e=>`<button class="chip ${(d.equipment||[]).includes(e.id)?'accent':''}" style="min-height:44px;padding:8px 14px;font-size:.95rem" role="checkbox" aria-checked="${(d.equipment||[]).includes(e.id)}" data-a="obpick" data-k="equipment" data-v="${e.id}" data-multi="1">${e.n}</button>`).join('')}</div></div>`:''}`+next();
   else if(st===5){
     const view=d.sex==='homme'||(d.sex==='np'&&ui.ob.view==='homme')?'homme':'femme';
-    body=head('Quelle silhouette vises-tu ?','Touche une statue : elle passe du marbre à l’or.')
+    body=head('Que veux-tu accomplir ?','Touche une statue : elle passe du marbre à l’or.')
       +(d.sex==='np'?`<div class="ob-seg" role="group" aria-label="Statues affichées"><span>Voir :</span>${[['femme','Femmes'],['homme','Hommes']].map(([k,l])=>`<button data-a="obview" data-v="${k}" aria-pressed="${view===k}">${l}</button>`).join('')}</div>`:'')
-      +`<div class="ob-grid" role="radiogroup" aria-label="Silhouette visée">${Object.entries(SILHOUETTES).map(([k,s])=>{ const on=d.silhouette===k, name=silName(k,d.sex), f='silhouettes/silhouette-'+k+'-'+view;
+      +`<div class="ob-grid" role="radiogroup" aria-label="Objectif">${Object.keys(SILHOUETTES).map(k=>{ const on=d.silhouette===k, name=silName(k), f='silhouettes/silhouette-'+k+'-'+view;
         return `<button class="ob-sil ${on?'on':''}" role="radio" aria-checked="${on}" data-a="obpick" data-k="silhouette" data-v="${k}">
-          <span class="pic"><span class="m-ph"></span><span class="g-ph"></span><span class="soon">STATUE À VENIR</span><img class="m" src="${f}.jpg" alt="Statue ${esc(name)}, en marbre" onerror="${IMG_WEBP}"><img class="g" src="${f}-or.jpg" alt="" onerror="${IMG_WEBP}"></span>
-          ${on?`<span class="ck" aria-hidden="true">${CHECK}</span>`:''}<span class="t">${name}</span><span class="s">${s.s}</span></button>`; }).join('')}</div>`+next();
+          <span class="pic"><span class="m-ph"></span><span class="g-ph"></span><span class="soon">STATUE À VENIR</span><img class="m" src="${f}.jpg" alt="Statue illustrant l’objectif ${esc(name)}" onerror="${IMG_WEBP}"><img class="g" src="${f}-or.jpg" alt="" onerror="${IMG_WEBP}"></span>
+          ${on?`<span class="ck" aria-hidden="true">${CHECK}</span>`:''}<span class="t">${name}</span></button>`; }).join('')}</div>`+next();
   }
   else if(st===6){
     const n=(d.weekdays||[]).length;
@@ -1696,7 +1699,7 @@ function renderOnboarding(){
   return `<main class="ob">${top}${body}</main>`;
 }
 // L'Oracle : le fil doré se déroule pendant que les étapes se cochent, puis le récapitulatif du plan.
-const ORACLE_STEPS = ['Analyse de ton profil','Choix des exercices pour ton lieu d’entraînement','Répartition sur tes jours','Ajustement à ta durée de séance','Adaptation à ta silhouette visée'];
+const ORACLE_STEPS = ['Analyse de ton profil','Choix des exercices pour ton lieu d’entraînement','Répartition sur tes jours','Ajustement à ta durée de séance','Adaptation à ton objectif'];
 const ORACLE_AT = [79.3,84.5,89.7,94.8,100];   // part du fil (en %) où il passe devant chaque étape
 const ORACLE_D = 'M30 80 C120 70 290 100 280 210 C272 300 120 320 70 300 C30 284 24 360 24 400 C24 430 64 440 64 470 L64 694';
 function renderOracle(ready){
@@ -1712,7 +1715,7 @@ function renderOracle(ready){
     ${ready?'':`<path d="${ORACLE_D}" fill="none" stroke="#FFD08E" stroke-opacity=".16" stroke-width="1.5" stroke-dasharray="2 5"/>`}
     <path ${ready?'':'id="o-fil"'} d="${ORACLE_D}" pathLength="100" fill="none" stroke="url(#fil-or)" stroke-width="2.7" stroke-linecap="round" stroke-dasharray="100 100" stroke-dashoffset="${ready?0:100}" filter="url(#lueur-fil)"/></svg>`;
   const rows=ready
-    ? [['Silhouette visée',`<b>${silName(d.silhouette,d.sex)}</b>`],[`${n} séance${n>1?'s':''} par semaine`,`<span class="o-days">${WEEKDAYS.map((w,i)=>`<span class="${wd.includes(i)?'on':''}" aria-label="${w}${wd.includes(i)?', entraînement':''}">${'LMMJVSD'[i]}</span>`).join('')}</span>`],
+    ? [['Objectif',`<b>${silName(d.silhouette)}</b>`],[`${n} séance${n>1?'s':''} par semaine`,`<span class="o-days">${WEEKDAYS.map((w,i)=>`<span class="${wd.includes(i)?'on':''}" aria-label="${w}${wd.includes(i)?', entraînement':''}">${'LMMJVSD'[i]}</span>`).join('')}</span>`],
        ['Durée',`<b>${d.duration} min par séance</b>`],['Lieu',`<b>${PLACES[d.lieu].n}</b>`],['Niveau',`<b>${LEVELS[d.level].n}</b>`]]
        .map(([k,v])=>`<div class="o-row"><span class="o-dot"><i class="o-pt"></i></span><div class="o-val"><small>${k}</small>${v}</div></div>`).join('')
     : ORACLE_STEPS.map(s=>`<div class="o-row"><span class="o-dot"><i></i></span><span class="o-l">${s}</span></div>`).join('');
@@ -1806,7 +1809,7 @@ function renderWorkout(){
 
 function draftExercise(it,ctx){
   const ex=EXM[it.exId], sg=suggest(it,S.profile,workouts(),ctx);
-  return {slot:it.slot, exId:it.exId, range:it.range, rest:it.rest, note:sg.note, up:!!sg.up, harder:!!sg.harder,
+  return {slot:it.slot, ...(it.fam?{fam:it.fam}:{}), exId:it.exId, range:it.range, rest:it.rest, note:sg.note, up:!!sg.up, harder:!!sg.harder,
     sets:Array.from({length:it.sets},()=>({kg:isWeighted(ex)?sg.kg:'', reps:ex.t?'':sg.reps, secs:ex.t?sg.secs:'', done:false}))};
 }
 const PICK_KEY='askesia.pick';   // séance choisie sur l'accueil (autre séance, lieu, ordre), gardée jusqu'à ce qu'on la commence
@@ -1859,9 +1862,10 @@ function validateSet(i){
 function switchVariant(dir){
   readInputs();
   const base=clone(S.profile), p=draft.home?homeOf(base):base, cur=draft.ex[draft.cur], id=variantOf(cur.exId,dir,p); if(!id) return;
-  const sk=draft.home?'swapsHome':'swaps'; base[sk]={...base[sk], [draft.tpl+':'+cur.slot]:id}; Store.saveProfile(base);
+  const sk=draft.home?'swapsHome':'swaps';
+  if(!cur.fam || cur.fam===TPL[draft.tpl].slots[cur.slot]){ base[sk]={...base[sk], [draft.tpl+':'+cur.slot]:id}; Store.saveProfile(base); }   // exercice d'appoint de la semaine : choix non retenu
   const ex=EXM[id], undone=cur.sets.filter(s=>!s.done).length||cur.sets.length;
-  const it={slot:cur.slot, exId:id, sets:undone, range:repRange(ex,p,now()), rest:restFor(ex,p)};
+  const it={slot:cur.slot, fam:cur.fam, exId:id, sets:undone, range:repRange(ex,p,now()), rest:restFor(ex,p)};
   const fresh=draftExercise(it,{deload:draft.deload, returning:isReturning(workouts(),now())});
   if(cur.sets.some(s=>s.done)){ cur.sets=cur.sets.filter(s=>s.done); draft.ex.splice(draft.cur+1,0,fresh); draft.cur++; }
   else draft.ex[draft.cur]=fresh;
@@ -2265,12 +2269,14 @@ setTimeout(checkUpdate,4000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ if(ui.screen==='workout'&&draft){ wakeLock(true); if(draft.rest) tickRest(); } } else { wl=null; } });
 
 // Accès aux règles pour les tests automatiques (aucun effet sur l'appli).
-window.Askesia = {Store, S, restedIndex, accFamilies, sessionFeel, inOrder, badgeDone, badgeHow, homeOf, startLoad, obProfile, ui, EX, EXM, TPL, PROGRAMS, GOALS, LEVELS, plan, rotation, programFor, needsFewerDays, nextIndex, suggest, incOf, repRange, setsFor, deloadReason, deloadState, isReturning, weekVolume, volumeZone, variantOf, available, approachSets};
+window.Askesia = {weekStreak, bestStreakEver, Store, S, restedIndex, accFamilies, sessionFeel, inOrder, badgeDone, badgeHow, homeOf, startLoad, obProfile, ui, EX, EXM, TPL, PROGRAMS, GOALS, LEVELS, plan, rotation, programFor, needsFewerDays, nextIndex, suggest, incOf, repRange, setsFor, deloadReason, deloadState, isReturning, weekVolume, volumeZone, variantOf, available, approachSets};
 
 // Séance en cours enregistrée par l'ancienne version : on la rend compatible.
 if(draft && !draft.warmup){ draft.warmup={done:true}; draft.ex.forEach(e=>{ if(!e.range && e.repMin) e.range=[e.repMin,e.repMax]; }); }
 if(draft) ui.screen=null;
 Store.init();
+// Rend l'appli installable sur Android (« Installer l'appli » dans Chrome).
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
 </body>
