@@ -130,7 +130,7 @@ p{margin:0}
 .grip::before{content:"";width:14px;height:5px;border-block:1.5px solid currentColor}
 .grip:focus-visible{opacity:1}
 .glow li.lift{z-index:2;background:var(--glass-hi);border-radius:14px;box-shadow:0 10px 24px var(--shade);border-color:transparent}
-.glow>.homebtn{position:absolute;top:10px;right:10px}
+.glow>.cardbtns{position:absolute;top:10px;right:10px;display:flex;gap:2px}
 .homebtn[aria-pressed="true"]{color:var(--accent);background:var(--accent-soft)}
 .pills{display:flex;flex-wrap:wrap;gap:8px}
 .pills .chip{min-height:40px}
@@ -816,7 +816,7 @@ function needsFewerDays(days,level){ return !!PROGRAMS[days] && PROGRAMS[days][L
 
 // La prochaine séance suit toujours la dernière faite (séance manquée : rien n'est perdu).
 function nextIndex(p,ws){
-  const rot=rotation(p), last=ws[ws.length-1];
+  const rot=rotation(p), last=[...ws].reverse().find(s=>!s.extra);   // une séance faite avec un ami ne compte pas dans l'ordre du programme
   if(!last) return 0;
   let i=(typeof last.rot==='number' && rot[last.rot]===last.tpl) ? last.rot : rot.indexOf(last.tpl);
   return i<0 ? 0 : (i+1)%rot.length;
@@ -1054,7 +1054,8 @@ const I = {
   lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   pencil:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
-  trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'
+  trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/>'
 };
 const ic = (n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
 
@@ -1073,7 +1074,7 @@ const stamp = o=>Object.assign(o,{updatedAt:new Date().toISOString()});
    propre copie hors ligne et renvoie les écritures dès que le réseau revient.
    ===================================================================== */
 // Numéro de version de cette page : le changer à chaque envoi sur GitHub pour que les appareils proposent la mise à jour.
-const APP_VERSION = '2026-10-19-4';
+const APP_VERSION = '2026-10-27-1';
 const FIREBASE_VERSION = '10.12.2';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMQ6Vq1xHpmkECC0jJAbMBGozGRSmVJYM",
@@ -1340,7 +1341,8 @@ function renderHome(){
   const p=S.profile, ws=workouts(), t=now(), rot=rotation(p), ni=restedIndex(p,ws,t), pk=lsGet(PICK_KEY), sel=pk&&rot[pk.i]===pk.k?pk:null, idx=sel?sel.i:ni, key=rot[idx];
   const dl=deloadState(p,ws), reason=deloadReason(p,ws,t), ret=isReturning(ws,t);
   const gym=hasGym(p), home=gym&&!!(sel&&sel.home), items=inOrder(plan(key,home?homeOf(p):p,{deload:dl.active, now:t, vol:weekVolume(ws,t)}), sel&&sel.order);
-  ui.cur={k:key, i:idx, home};
+  ui.cur={k:key, i:idx, home, ex:items.map(it=>it.exId)};
+  const inv=!draft && lsGet(SHARED_KEY);
   const lv=levelInfo(totalXp()), wc=weekCount(ws,t), streak=weekStreak(), prs=totals().prs;
   const m=mondayOf(t), todayK=dayKey(t), doneDays=new Set(ws.map(s=>dayKey(s.date)));
   const sugg=p.weekdays||SUGGESTED_DAYS[p.days]||[];
@@ -1359,9 +1361,13 @@ function renderHome(){
     ${dl.active?`<p class="hint accent">${ic('leaf')}<span><b>Semaine allégée en cours</b> : 2 séries par exercice, charges à −10 %. Encore ${dl.left} séance${dl.left>1?'s':''}.</span></p>`:''}
     ${reason&&!draft?`<section class="card stack-s"><span class="eyebrow">Récupération</span><h2>Une semaine allégée ?</h2><p class="muted">${reasons[reason]} On te propose ${p.days} séance${p.days>1?'s':''} à 2 séries par exercice, charges à −10 %. Les records ne sont pas comptés pendant cette semaine.</p>
       <div class="row wrap" style="gap:8px"><button class="btn primary small" data-a="deloadyes">Faire une semaine allégée</button><button class="btn ghost small" data-a="deloadno">Pas maintenant</button></div></section>`:''}
+    ${inv?`<section class="card stack-s" style="border-color:var(--accent)"><span class="eyebrow" style="color:var(--accent)">${ic('users')} Séance à deux</span><h2>${esc(inv.de||'Un ami')} t’invite : ${esc(TPL[inv.s].n)}</h2>
+      <p class="muted" style="font-size:.9rem">${inv.x.map(id=>esc(EXM[id].n)).join(' · ')}</p>
+      <p class="muted" style="font-size:.82rem">Mêmes exercices, dans le même ordre, avec tes propres charges. Ton programme ne bouge pas.</p>
+      <div class="row wrap" style="gap:8px"><button class="btn primary small" data-a="sharedgo">${ic('play')} Faire cette séance</button><button class="btn ghost small" data-a="sharedno">Non merci</button></div></section>`:''}
     ${today&&!draft&&!sel?renderDoneCard(today,key,wc):`<section class="glow stack${ui.flip?' fi':''}">
-      ${gym?`<button class="iconbtn sm homebtn" data-a="homeswap" aria-pressed="${home}" aria-label="Version à la maison">${ic('home')}</button>`:''}
-      <div class="stack-s" style="gap:4px${gym?';padding-right:36px':''}"><span class="eyebrow hot">${new Date(t).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} · séance ${idx+1} sur ${rot.length}${home?' · à la maison':''}</span><h1>${esc(TPL[key].n)}</h1><span class="muted">${items.length} exercices · environ ${estMinutes(items)} min, plus 5 min d’échauffement${!sel&&idx!==nextIndex(p,ws)?'<br>Proposée pour laisser récupérer les muscles travaillés ces derniers jours.':''}</span></div>
+      <div class="cardbtns"><button class="iconbtn sm" data-a="sharesess" aria-label="Faire avec un ami">${ic('users')}</button>${gym?`<button class="iconbtn sm homebtn" data-a="homeswap" aria-pressed="${home}" aria-label="Version à la maison">${ic('home')}</button>`:''}</div>
+      <div class="stack-s" style="gap:4px;padding-right:${gym?84:40}px"><span class="eyebrow hot">${new Date(t).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} · séance ${idx+1} sur ${rot.length}${home?' · à la maison':''}</span><h1>${esc(TPL[key].n)}</h1><span class="muted">${items.length} exercices · environ ${estMinutes(items)} min, plus 5 min d’échauffement${!sel&&idx!==nextIndex(p,ws)?'<br>Proposée pour laisser récupérer les muscles travaillés ces derniers jours.':''}</span></div>
       <ol data-sort="home">${items.map(it=>{const ex=EXM[it.exId];return `<li data-k="${it.slot}">${grip(ex.n)}<span>${esc(ex.n)}</span><b>${targetLabel(ex,it)}</b></li>`}).join('')}</ol>
       <button class="btn primary big" data-a="start" data-v="${key}" data-i="${idx}" ${home?'data-h="1"':''}>${ic('play')} Commencer la séance</button>
     </section>`}
@@ -1394,7 +1400,7 @@ function renderDoneCard(s,key,wc){
   const nd=wd.length?[...wd].sort((a,b)=>a-b).find(d=>d>td)??Math.min(...wd):null;
   const exN=s.exercises.length, min=Math.round((s.durationSec||0)/60);
   return `<section class="done-card">
-    <p class="k">${new Date(now()).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} · séance ${(s.rot??0)+1} sur ${rot.length}</p>
+    <p class="k">${new Date(now()).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} · ${s.extra?'séance à deux':'séance '+((s.rot??0)+1)+' sur '+rot.length}</p>
     <div class="crown"><img src="illustrations/couronne-laurier.svg" alt="" onerror="this.remove()"><span>${ic('check')}</span></div>
     <h2>Séance faite</h2>
     <span class="sub">${esc(s.title)} · ${min} min · ${exN} exercice${exN>1?'s':''}</span>
@@ -1829,14 +1835,25 @@ function sessionFeel(exs){
   const f=exs.map(e=>e.feel).filter(Boolean), n=k=>f.filter(x=>x===k).length;
   return !f.length ? 'ok' : n('dur')*2>=f.length ? 'dur' : n('facile')*2>f.length ? 'facile' : 'ok';
 }
-function startWorkout(key,idx,home){
+const SITE = 'https://aurelieagp.github.io/askesia/';
+const SHARED_KEY = 'askesia.shared';   // séance reçue d'un ami, en attente
+// Lien « faire avec un ami » : #avec={de, s (séance), x (exercices dans l'ordre)}. Le contenu vient d'un lien : on ne garde que des exercices connus.
+function parseShared(hash){
+  const m=/^#avec=(.+)$/.exec(hash||''); if(!m) return null;
+  try{ const d=JSON.parse(decodeURIComponent(m[1])), x=(Array.isArray(d.x)?d.x:[]).filter(id=>typeof id==='string' && EXM[id]).slice(0,12);
+    return x.length ? {de:String(d.de||'').trim().slice(0,30), s:TPL[d.s]?d.s:'A', x} : null; }catch(e){ return null; }
+}
+function startWorkout(key,idx,home,sh){
   const p=home?homeOf(S.profile):S.profile, ws=workouts(), t=now(), dl=deloadState(p,ws).active, ctx={deload:dl, returning:isReturning(ws,t), now:t};
-  const pk=lsGet(PICK_KEY), items=inOrder(plan(key,p,{deload:dl, now:t, vol:weekVolume(ws,t)}), pk&&pk.k===key&&pk.order); lsSet(PICK_KEY,null);
+  const pk=lsGet(PICK_KEY), items=sh
+    ? sh.x.map((id,i)=>({slot:i, exId:id, sets:setsFor(p,i,dl), range:repRange(EXM[id],p,t), rest:restFor(EXM[id],p)}))   // mêmes exercices, ses propres charges
+    : inOrder(plan(key,p,{deload:dl, now:t, vol:weekVolume(ws,t)}), pk&&pk.k===key&&pk.order);
+  lsSet(sh?SHARED_KEY:PICK_KEY,null);
   const exs=items.map(it=>draftExercise(it,ctx));
   const fw=exs.find(e=>isWeighted(EXM[e.exId]));
   if(fw) fw.warm=approachSets(+fw.sets[0].kg||EXM[fw.exId].start,EXM[fw.exId],p);
   const rot=rotation(p);
-  draft={id:uid(), tpl:key, rot:(idx!=null&&rot[idx]===key)?idx:rot.indexOf(key), title:TPL[key].n+(home?' (maison)':''), home:!!home, startedAt:t, cur:0, deload:dl, warmup:{done:false}, ex:exs};
+  draft={id:uid(), tpl:key, rot:sh?null:(idx!=null&&rot[idx]===key)?idx:rot.indexOf(key), title:TPL[key].n+(sh?' avec '+(sh.de||'un ami'):home?' (maison)':''), ...(sh?{extra:true}:{}), home:!!home, startedAt:t, cur:0, deload:dl, warmup:{done:false}, ex:exs};
   saveDraft(); ui.screen='workout'; window.scrollTo(0,0); wakeLock(true); render();
 }
 function saveDraft(){ Store.saveDraft(); }
@@ -1863,7 +1880,7 @@ function switchVariant(dir){
   readInputs();
   const base=clone(S.profile), p=draft.home?homeOf(base):base, cur=draft.ex[draft.cur], id=variantOf(cur.exId,dir,p); if(!id) return;
   const sk=draft.home?'swapsHome':'swaps';
-  if(!cur.fam || cur.fam===TPL[draft.tpl].slots[cur.slot]){ base[sk]={...base[sk], [draft.tpl+':'+cur.slot]:id}; Store.saveProfile(base); }   // exercice d'appoint de la semaine : choix non retenu
+  if(!draft.extra && (!cur.fam || cur.fam===TPL[draft.tpl].slots[cur.slot])){ base[sk]={...base[sk], [draft.tpl+':'+cur.slot]:id}; Store.saveProfile(base); }   // exercice d'appoint de la semaine : choix non retenu
   const ex=EXM[id], undone=cur.sets.filter(s=>!s.done).length||cur.sets.length;
   const it={slot:cur.slot, fam:cur.fam, exId:id, sets:undone, range:repRange(ex,p,now()), rest:restFor(ex,p)};
   const fresh=draftExercise(it,{deload:draft.deload, returning:isReturning(workouts(),now())});
@@ -1935,7 +1952,7 @@ function finishWorkout(){
   if(!w.deload) exercises.forEach(e=>{ const ex=EXM[e.exId], prev=bestBefore(e.exId), cur=scoreOf(ex,work(e.sets)); if(prev!=null && cur!=null && cur>prev+1e-9) prs.push(e.exId); });
   const setsN=exercises.reduce((a,e)=>a+work(e.sets).length,0);
   const vol=exercises.reduce((a,e)=>a+(isWeighted(EXM[e.exId])?work(e.sets).reduce((b,s)=>b+s.kg*s.reps,0):0),0);
-  ui.summary={id:w.id, kind:'workout', tpl:w.tpl, rot:w.rot, title:w.title, date, durationSec:Math.round((now()-w.startedAt)/1000), exercises, prs, xp:50+5*setsN+25*prs.length, deload:!!w.deload, _vol:vol, _sets:setsN};
+  ui.summary={id:w.id, kind:'workout', tpl:w.tpl, rot:w.rot, title:w.title, date, durationSec:Math.round((now()-w.startedAt)/1000), exercises, prs, xp:50+5*setsN+25*prs.length, deload:!!w.deload, ...(w.extra?{extra:true}:{}), _vol:vol, _sets:setsN};
   ui.screen='summary'; window.scrollTo(0,0); render();
 }
 function renderSummary(){
@@ -2116,6 +2133,17 @@ const A = {
   redogo(){ ui.sheet=null; ui.set=null; ui.screen=null; ui.ob={step:1, edit:true, data:obFromProfile(S.profile)}; window.scrollTo(0,0); render(); },
   pickopen(){ ui.pickOpen=!ui.pickOpen; render(); },
   homepick(d){ ui.pickOpen=false; flipTo({k:d.v, i:+d.i, home:ui.cur.home}); },
+  sharesess(){
+    const c=ui.cur, url=SITE+'#avec='+encodeURIComponent(JSON.stringify({de:(S.profile.name||'').trim().split(' ')[0], s:c.k, x:c.ex}));
+    const text='On fait cette séance ensemble ? '+TPL[c.k].n+' sur Askesia :';
+    if(navigator.share) navigator.share({title:'Askesia', text, url}).catch(()=>{});
+    else if(navigator.clipboard) navigator.clipboard.writeText(url).then(()=>toast('Lien copié : envoie-le à ton ami.'),()=>toast(url));
+    else toast(url);
+  },
+  sharedgo(){ const sh=lsGet(SHARED_KEY); if(!sh) return;
+    if(draft && draft.ex.some(e=>e.sets.some(s=>s.done))){ ui.screen='workout'; render(); toast('Une séance est déjà en cours : termine-la ou quitte-la d’abord.'); return; }
+    startWorkout(sh.s,null,false,sh); },
+  sharedno(){ lsSet(SHARED_KEY,null); render(); },
   homeswap(){ const c=ui.cur, pk=lsGet(PICK_KEY); flipTo({...c, home:!c.home, order:pk&&pk.k===c.k?pk.order:null}); },
   start(d){ ui.sheet=null; if(draft && draft.ex.some(e=>e.sets.some(s=>s.done))){ ui.screen='workout'; render(); toast('Une séance est déjà en cours : termine-la ou quitte-la d’abord.'); return; } startWorkout(d.v, d.i!=null?+d.i:null, !!d.h); },
   resume(){ ui.screen='workout'; wakeLock(true); render(); },
@@ -2269,11 +2297,12 @@ setTimeout(checkUpdate,4000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ if(ui.screen==='workout'&&draft){ wakeLock(true); if(draft.rest) tickRest(); } } else { wl=null; } });
 
 // Accès aux règles pour les tests automatiques (aucun effet sur l'appli).
-window.Askesia = {weekStreak, bestStreakEver, Store, S, restedIndex, accFamilies, sessionFeel, inOrder, badgeDone, badgeHow, homeOf, startLoad, obProfile, ui, EX, EXM, TPL, PROGRAMS, GOALS, LEVELS, plan, rotation, programFor, needsFewerDays, nextIndex, suggest, incOf, repRange, setsFor, deloadReason, deloadState, isReturning, weekVolume, volumeZone, variantOf, available, approachSets};
+window.Askesia = {parseShared, weekStreak, bestStreakEver, Store, S, restedIndex, accFamilies, sessionFeel, inOrder, badgeDone, badgeHow, homeOf, startLoad, obProfile, ui, EX, EXM, TPL, PROGRAMS, GOALS, LEVELS, plan, rotation, programFor, needsFewerDays, nextIndex, suggest, incOf, repRange, setsFor, deloadReason, deloadState, isReturning, weekVolume, volumeZone, variantOf, available, approachSets};
 
 // Séance en cours enregistrée par l'ancienne version : on la rend compatible.
 if(draft && !draft.warmup){ draft.warmup={done:true}; draft.ex.forEach(e=>{ if(!e.range && e.repMin) e.range=[e.repMin,e.repMax]; }); }
 if(draft) ui.screen=null;
+if(typeof location!=='undefined' && location.hash){ const sh=parseShared(location.hash); if(sh){ lsSet(SHARED_KEY,sh); ui.tab='home'; history.replaceState(null,'',location.pathname+location.search); } }
 Store.init();
 // Rend l'appli installable sur Android (« Installer l'appli » dans Chrome).
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
